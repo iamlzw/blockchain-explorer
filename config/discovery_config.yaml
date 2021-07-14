@@ -1,0 +1,10 @@
+version: 0
+tlsconfig:
+  certpath: ""
+  keypath: ""
+  peercacertpath: E:\workspace\go\src\github.com\lifegoeson\blockchain-explorer\crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/tls/ca.crt
+  timeout: 0s
+signerconfig:
+  mspid: Org1MSP
+  identitypath: E:\workspace\go\src\github.com\lifegoeson\blockchain-explorer\crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/signcerts/User1@org1.example.com-cert.pem
+  keypath: E:\workspace\go\src\github.com\lifegoeson\blockchain-explorer\crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/keystore/c5dad79b0eb8ca81ce0078d204d3cc6872e5d64d64789c097dd2e30b2231ca6a_sk

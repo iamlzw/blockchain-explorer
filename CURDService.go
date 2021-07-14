@@ -8,7 +8,7 @@ import (
 )
 
 //根据创世hash以及区块号获取交易数量
-func getTxCountByBlockNum(channel_genesis_hash string, blockNum int64) (int64, int64){
+func getTxCountByBlockNum(channel_genesis_hash string, blockNum int64) model.GetTxCountByBlockNumResultModel{
 	//更新数据
 	stmt := `select blocknum ,txcount from blocks where channel_genesis_hash=$1 and blocknum=$2;`
 	row ,err:= db.Query(stmt, channel_genesis_hash,blockNum)
@@ -22,67 +22,71 @@ func getTxCountByBlockNum(channel_genesis_hash string, blockNum int64) (int64, i
 			log.Fatal(err)
 		}
 	}
-
-	return blocknum,txcount
+	return model.GetTxCountByBlockNumResultModel{BlockNum: blocknum, TxCount: txcount}
 }
 
 //根据交易ID获取交易信息
-func getTransactionByID(channel_genesis_hash string, txhash string) model.Transaction{
+func getTransactionByID(txhash string) model.GetTransactionByIDResultModel{
 	stmt := ` select t.txhash,t.validation_code,t.payload_proposal_hash,t.creator_msp_id,t.endorser_msp_id,t.chaincodename,t.type,t.createdt,t.read_set,
-        t.write_set,channel.name as channelName from TRANSACTIONS as t inner join channel on t.channel_genesis_hash=channel.channel_genesis_hash where t.txhash = $1 ;`
+        t.write_set,channel.name as channelName from transactions as t inner join channel on t.channel_genesis_hash=channel.channel_genesis_hash where t.txhash = $1 ;`
 	row ,err:= db.Query(stmt,txhash)
 	common.CheckErr(err)
 	var tx model.Transaction
+	var channelName string
 	for row.Next() {
-		if err := row.Scan(&tx); err != nil {
+		if err := row.Scan(&tx.TxHash,&tx.ValidationCode,&tx.PayloadProposalHash,&tx.CreatorMspId,&tx.EndorserMspId,&tx.ChaincodeName,&tx.Type,&tx.CreateAt,&tx.ReadSet,&tx.WriteSet,&channelName); err != nil {
 			log.Fatal(err)
 		}
 	}
-	return tx
+	return model.GetTransactionByIDResultModel{Tx: tx, ChannelName: channelName}
 }
 
 //获取channel最近的3个block
-func getBlockActivityList(channel_genesis_hash string) []model.Block{
+func getBlockActivityList(channelGenesisHash string) []model.GetBlockActivityListResultModel{
 	stmt := `select blocks.blocknum,blocks.txcount ,blocks.datahash ,blocks.blockhash ,blocks.prehash,blocks.createdt,(
       SELECT  array_agg(txhash) as txhash FROM transactions where blockid = blocks.blocknum and
-       channel_genesis_hash = '${channel_genesis_hash}' group by transactions.blockid ),
+       channel_genesis_hash = $1 group by transactions.blockid ),
       channel.name as channelname  from blocks inner join channel on blocks.channel_genesis_hash = channel.channel_genesis_hash  where
-       blocks.channel_genesis_hash ='${channel_genesis_hash}' and blocknum >= 0
+       blocks.channel_genesis_hash = $1 and blocknum >= 0
        order by blocks.blocknum desc limit 3;`
-	row ,err:= db.Query(stmt,channel_genesis_hash)
+	row ,err:= db.Query(stmt, channelGenesisHash)
 	common.CheckErr(err)
-	var blks []model.Block
-	var block model.Block
+	var blks []model.GetBlockActivityListResultModel
+	var blk model.GetBlockActivityListResultModel
 	for row.Next() {
-		if err := row.Scan(&block); err != nil {
+		if err := row.Scan(&blk.BlockNum,&blk.TxCount,&blk.DataHash,&blk.BlockHash,&blk.PreHash,&blk.CreateAt,&blk.TxHash,&blk.ChannelName); err != nil {
 			log.Fatal(err)
 		}
-		blks = append(blks, block)
+		blks = append(blks, blk)
 	}
 	return blks
 }
 //Returns the list of transactions by channel, organization, date range and greater than a block and transaction id.
-func getTxList(channel_genesis_hash string , blockNum int64, txid string , from time.Time, to time.Time, orgs string) {
+func getTxList(channelGenesisHash string , blockNum int64, txId string , from time.Time, to time.Time, organizations string) []model.GetTxListResultModel{
 	txListSql := ""
-	if len(orgs) != 0 {
-		txListSql = "and t.creator_msp_id in ("+"'"+orgs+"')"
+	if len(organizations) != 0 {
+		txListSql = "and t.creator_msp_id in ("+"'"+organizations+"')"
 	}
 	queryText := `select t.creator_msp_id,t.txhash,t.type,t.chaincodename,t.createdt,channel.name as channelName from transactions as t
        inner join channel on t.channel_genesis_hash=channel.channel_genesis_hash where t.blockid >= $2 and t.id >= $3 `+txListSql+`and
        t.channel_genesis_hash = $1  and t.createdt between $4 and $5  order by  t.id desc;`
-
-	stmt,err := db.Prepare(queryText)
-	if err != nil {
-		log.Fatal(err)
+	rows ,err:= db.Query(queryText, channelGenesisHash,blockNum,txId,from,to,txListSql)
+	common.CheckErr(err)
+	var txListResultModels []model.GetTxListResultModel
+	for rows.Next() {
+		var tx model.GetTxListResultModel
+		if err := rows.Scan(&tx.CreatorMspId,&tx.TxHash,&tx.Type,&tx.ChaincodeName,&tx.CreateAt,&tx.ChannelName); err != nil {
+			log.Fatal(err)
+		}
+		txListResultModels = append(txListResultModels,tx)
 	}
-
-	_,err = stmt.Exec(channel_genesis_hash,blockNum,txid,from,to,txListSql)
+	return txListResultModels
 }
 
-func getBlockAndTxList(channel_genesis_hash string, from time.Time, to time.Time, orgs string) {
+func getBlockAndTxList(channelGenesisHash string, from time.Time, to time.Time, organizations string) []model.GetBlockAndTxListResultModel{
 	blockAndTxList := ""
-	if len(orgs) != 0 {
-		blockAndTxList = "and t.creator_msp_id in ("+"'"+orgs+"')"
+	if len(organizations) != 0 {
+		blockAndTxList = "and t.creator_msp_id in ("+"'"+organizations+"')"
 	}
 	queryText := `select a.* from  (
       select (select c.name from channel c where c.channel_genesis_hash =
@@ -90,35 +94,44 @@ func getBlockAndTxList(channel_genesis_hash string, from time.Time, to time.Time
         SELECT  array_agg(txhash) as txhash FROM transactions where blockid = blocks.blocknum `+blockAndTxList+` and
          channel_genesis_hash = $1 and createdt between $2 and $3) from blocks where
          blocks.channel_genesis_hash =$1 and blocknum >= 0 and blocks.createdt between $2 and $3
-         order by blocks.blocknum desc)  a where  a.txhash IS NOT NULL`
-	_,err := db.Query(queryText,channel_genesis_hash,from,to)
+         order by blocks.blocknum desc)  a where  a.txhash IS NOT NULL;`
+	rows,err := db.Query(queryText, channelGenesisHash,from,to)
 	common.CheckErr(err)
+	var blockAndTxs []model.GetBlockAndTxListResultModel
+	for rows.Next() {
+		var blockAndTx model.GetBlockAndTxListResultModel
+		if err := rows.Scan(&blockAndTx.ChannelName,&blockAndTx.BlockNum,&blockAndTx.TxHash,&blockAndTx.DataHash,&blockAndTx.BlockHash,&blockAndTx.PreHash,&blockAndTx.CreateAt,&blockAndTx.TxHash); err != nil {
+			log.Fatal(err)
+		}
+		blockAndTxs = append(blockAndTxs,blockAndTx)
+	}
+	return blockAndTxs
 }
 
-func getChannelConfig(channel_genesis_hash string) model.Channel{
+func getChannelConfig(channelGenesisHash string) model.Channel{
 	queryText := ` select * from channel where channel_genesis_hash = $1 `
 
-	row := db.QueryRow(queryText,channel_genesis_hash)
+	row := db.QueryRow(queryText, channelGenesisHash)
 	var channel model.Channel
-	if err := row.Scan(&channel); err != nil {
+	if err := row.Scan(&channel.Id,&channel.Name,&channel.Blocks,&channel.Trans,&channel.CreateAt,&channel.ChannelGenesisHash,&channel.ChannelHash,&channel.ChannelConfig,&channel.ChannelBlock,&channel.ChannelTx,&channel.ChannelVersion); err != nil {
 		log.Fatal(err)
 	}
 	return channel
 }
 
-func getChannel(channelname string, channel_genesis_hash string) model.Channel{
+func getChannel(channelName string, channelGenesisHash string) model.Channel{
 	queryText := ` select * from channel where name= $1 and channel_genesis_hash=$2`
-	row := db.QueryRow(queryText,channelname,channel_genesis_hash)
+	row := db.QueryRow(queryText,channelName, channelGenesisHash)
 	var channel model.Channel
-	if err := row.Scan(&channel); err != nil {
+	if err := row.Scan(&channel.Id,&channel.Name,&channel.Blocks,&channel.Trans,&channel.CreateAt,&channel.ChannelGenesisHash,&channel.ChannelHash,&channel.ChannelConfig,&channel.ChannelBlock,&channel.ChannelTx,&channel.ChannelVersion); err != nil {
 		log.Fatal(err)
 	}
 	return channel
 }
 
-func existChannel(channelname string) bool {
+func existChannel(channelName string) bool {
 	queryText := ` select count(1) from channel where name= $1`
-	row := db.QueryRow(queryText,channelname)
+	row := db.QueryRow(queryText,channelName)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		log.Fatal(err)
@@ -175,7 +188,7 @@ func saveTransaction(tx model.Transaction) bool {
 		log.Fatal(err)
 	}
 
-	//更新chaincodes的交易数量
+	//更新chaincode的交易数量
 	insertText2 := `update chaincodes set txcount = txcount+1 where channel_genesis_hash=$1`
 	result2, err := db.Exec(insertText2,tx.ChannelGenesisHash)
 	common.CheckErr(err)
@@ -183,7 +196,7 @@ func saveTransaction(tx model.Transaction) bool {
 		log.Fatal(err)
 		return false
 	}
-
+	//更新channel中的交易数量
 	insertText3 := `update channel set trans = trans+1 where channel_genesis_hash=$1`
 	result3, err := db.Exec(insertText3,tx.ChannelGenesisHash)
 	common.CheckErr(err)
@@ -194,9 +207,9 @@ func saveTransaction(tx model.Transaction) bool {
 	return true
 }
 
-func getCurBlockNum(channel_genesis_hash string) int64{
+func getCurBlockNum(channelGenesisHash string) int64{
 	queryText := `select max(blocknum) as blocknum from blocks  where channel_genesis_hash=$1`
-	row := db.QueryRow(queryText,channel_genesis_hash)
+	row := db.QueryRow(queryText, channelGenesisHash)
 	var max int64
 	var curBlockNum int64
 	if row.Err() != nil {
@@ -219,7 +232,7 @@ func saveChaincode(chaincode model.Chaincode) bool {
 	if count > 0{
 		return false
 	}
-	insertText := `insert into chaincodes(id, name, version, path, channel_genesis_hash, txcount, createdt) VALUES ($1,$2,$3,$4,$5,$6)`
+	insertText := `insert into chaincodes(name, version, path, channel_genesis_hash, txcount, createdt) VALUES ($1,$2,$3,$4,$5,$6)`
 	result, err := db.Exec(insertText,chaincode.Name,chaincode.Version,chaincode.Path,chaincode.ChannelGenesisHash,chaincode.TxCount,chaincode.CreateAt)
 	common.CheckErr(err)
 	if _,err = result.RowsAffected() ; err != nil {
@@ -269,8 +282,8 @@ func saveChannel(channel model.Channel) bool {
 		log.Fatal(err)
 	}
 	if count == 0 {
-		insertText := `insert into channel(name, blocks, trans, createdt, channel_genesis_hash, channel_hash, channel_config, channel_block, channel_tx, channel_version) values($1,$2,$3,$4,$5,$6)`
-		result, err := db.Exec(insertText,channel.Name,channel.Blocks,channel.Trans,channel.CreateAt,channel.ChannelGenesisHash,channel.ChannelHash)
+		insertText := `insert into channel(name, blocks, trans, createdt, channel_genesis_hash, channel_hash, channel_config, channel_block, channel_tx, channel_version) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+		result, err := db.Exec(insertText,channel.Name,channel.Blocks,channel.Trans,channel.CreateAt,channel.ChannelGenesisHash,channel.ChannelHash,channel.ChannelConfig,channel.ChannelBlock,channel.ChannelTx,channel.ChannelVersion)
 		common.CheckErr(err)
 		if _,err = result.RowsAffected() ; err != nil {
 			log.Fatal(err)
@@ -300,7 +313,7 @@ func savePeer(peer model.Peer) bool{
 		return false
 	}
 	insertText := `insert into peer(org, channel_genesis_hash, mspid, requests, events, server_hostname, createdt, peer_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
-	result, err := db.Exec(insertText,peer.Org,peer.ChannelGenesisHash,peer.MspId,peer.Requests,peer.Events,peer.Events,peer.ServerHostName,peer.CreateAt,peer.PeerType)
+	result, err := db.Exec(insertText,peer.Org,peer.ChannelGenesisHash,peer.MspId,peer.Requests,peer.Events,peer.ServerHostName,peer.CreateAt,peer.PeerType)
 	common.CheckErr(err)
 	if _,err = result.RowsAffected() ; err != nil {
 		log.Fatal(err)

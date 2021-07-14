@@ -35,7 +35,7 @@ type Channel struct {
 	ChannelConfig []byte `json:"channel_config"`
 	ChannelBlock []byte `json:"channel_block"`
 	ChannelTx []byte `json:"channel_tx"`
-	ChannelVersion string `json:"channel_version"`
+	ChannelVersion interface{} `json:"channel_version"`
 }
 
 type Orderer struct {
