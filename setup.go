@@ -1,15 +1,25 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric/common/tools/protolator"
+	ledgerUtil "github.com/hyperledger/fabric/core/ledger/util"
+
+	//"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-sdk-go/pkg/client/event"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/resmgmt"
+	ccpcontext "github.com/hyperledger/fabric-sdk-go/pkg/common/providers/context"
+	"github.com/hyperledger/fabric-sdk-go/pkg/common/providers/fab"
 	"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
 	configImpl "github.com/hyperledger/fabric-sdk-go/pkg/core/config"
 	fabImpl "github.com/hyperledger/fabric-sdk-go/pkg/fab"
@@ -20,12 +30,15 @@ import (
 	"github.com/hyperledger/fabric/cmd/common/signer"
 	_ "github.com/hyperledger/fabric/cmd/common/signer"
 	discovery "github.com/hyperledger/fabric/discovery/client"
-	"github.com/hyperledger/fabric/protos/utils"
+	//"github.com/hyperledger/fabric/protos/utils"
 	"strconv"
 	"strings"
 
+	cb "github.com/hyperledger/fabric/protos/common"
 	discoverypb "github.com/hyperledger/fabric/protos/discovery"
+	msp "github.com/hyperledger/fabric/protos/msp"
 	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/lifegoeson/blockchain-explorer/common"
 	"github.com/lifegoeson/blockchain-explorer/model"
 	"io"
@@ -44,7 +57,7 @@ const (
 	peerUrl = "grpcs://192.168.126.128:7051"
 	serverName = "peer0.org1.example.com"
 	channelName = "mychannel"
-	tlscapath = "E:\\workspace\\go\\src\\github.com\\lifegoeson\\blockchain-explorer\\crypto-config\\peerOrganizations\\org1.example.com\\tlsca\\tlsca.org1.example.com-cert.pem"
+	tlscapath = "D:\\workspace\\go\\src\\github.com\\lifegoeson\\blockchain-explorer\\crypto-config\\peerOrganizations\\org1.example.com\\tlsca\\tlsca.org1.example.com-cert.pem"
 	)
 
 	//init the sdk
@@ -153,6 +166,144 @@ func queryChaincodeInfo(sdk *fabsdk.FabricSDK,channelName string) *pb.ChaincodeQ
 	//}
 	chaincodeInfo,err :=orgResMgmt.QueryInstantiatedChaincodes("mychannel")
 	return chaincodeInfo
+}
+
+func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string){
+	ccp := sdk.ChannelContext(chlName, fabsdk.WithUser("User1"),fabsdk.WithOrg("Org1"))
+	ledgerClient, err := ledger.New(ccp)
+	chainInfos,err := ledgerClient.QueryInfo()
+
+	var b *cb.Block
+	var bb model.Block
+	var i uint64
+	for i = 1 ; i < chainInfos.BCI.Height ; i++{
+		b ,err = ledgerClient.QueryBlock(i)
+		bs := blockFromProto2Struct(b)
+		bb.BlockNum = int64(i)
+		bb.PrevBlockHash = ""
+		bb.ChannelGenesisHash = channelGenesisHash
+		bb.CreateAt = bs.Data.Data[0].Payload.PayloadHeader.ChannelHeader.Timestamp
+		bb.TxCount = int64(len(bs.Data.Data))
+		bb.DataHash = bs.Header.DataHash
+		bb.PreHash = hex.EncodeToString([]byte(bs.Header.PreviousHash))
+		blkNumInt64,_ := strconv.ParseInt(bs.Header.Number, 10, 64)
+		output,err := asn1.Marshal(bHeader{Number:blkNumInt64 ,PreviousHash: string(b.Header.GetPreviousHash()),DataHash: string(b.Header.GetDataHash())})
+		blkHash:= hex.EncodeToString(sha256.New().Sum(output))
+		bb.BlockHash = blkHash
+		payload_extension := bs.Data.Data[0].Payload.PayloadHeader.ChannelHeader.Extension
+		saveBlock(bb)
+		txsfltr := getBlockMetaData(b)
+		fmt.Println(txsfltr.Flag(0))
+
+		for j := 0 ; j < len(bs.Data.Data) ; j++{
+			syncTx(bs.Data.Data[j],bb.BlockNum,channelGenesisHash,txsfltr.Flag(0).String(),hex.EncodeToString(payload_extension))
+		}
+		//getMSPIdFromEndorsement(bs.Data.Data[0].Payload.PayloadData.Actions[0].ActionPayload.Action.Endorsements[0].Endorser)
+		common.CheckErr(err)
+	}
+	common.CheckErr(err)
+}
+
+func syncTx(env model.Envelope,blockId int64,channelGenesisHash string,validcode string,payload_extension string){
+	var tx model.Transaction
+	tx.BlockId = blockId
+	tx.TxHash = env.Payload.PayloadHeader.ChannelHeader.TxId
+	tx.CreateAt = env.Payload.PayloadHeader.ChannelHeader.Timestamp
+	tx.ChaincodeName = env.Payload.PayloadData.Actions[0].ActionPayload.Action.ProposalResponsePayload.Extension.ChaincodeId.Name
+	tx.Status = env.Payload.PayloadData.Actions[0].ActionPayload.Action.ProposalResponsePayload.Extension.Response.Status
+	tx.CreatorMspId = env.Payload.PayloadData.Actions[0].ActionHeader.HeaderCreator.MspId
+	tx.EndorserMspId = getMSPIdFromEndorsement(env.Payload.PayloadData.Actions[0].ActionPayload.Action.Endorsements)
+	tx.ChaincodeId = ""
+	tx.Type = "ENDORSEMENT_TRANSACTION"
+	tx.ReadSet,tx.WriteSet = getRwSet(env.Payload.PayloadData.Actions[0].ActionPayload.Action.ProposalResponsePayload.Extension.Results)
+	tx.ChannelGenesisHash = channelGenesisHash
+	tx.ValidationCode = validcode
+	tx.EnvelopeSignature = hex.EncodeToString(env.Signature)
+	tx.PayloadExtension = payload_extension
+	tx.CreatorIdBytes = env.Payload.PayloadHeader.SignatureHeader.SignatureHeaderCreator.IdBytes
+	tx.CreatorNonce = env.Payload.PayloadHeader.SignatureHeader.SignatureHeaderNonce
+	input := ""
+	args := env.Payload.PayloadData.Actions[0].ActionPayload.ChaincodeProposalPayload.Input.ChaincodeSpec.ChaincodeInput.Args
+	for k := 0; k < len(args);k++ {
+		if k == len(args) - 1  {
+			input += args[k]
+		}else {
+			input += args[k] + ","
+		}
+	}
+	tx.ChaincodeProposalInput = input
+	tx.TxResponse = ""
+	tx.PayloadProposalHash = env.Payload.PayloadData.Actions[0].ActionPayload.Action.ProposalResponsePayload.ProposalHash
+	var sId msp.SerializedIdentity
+	endorser := env.Payload.PayloadData.Actions[0].ActionPayload.Action.Endorsements[0].Endorser
+	_ = proto.Unmarshal(endorser, &sId)
+	tx.EndorserIdBytes = string(sId.IdBytes)
+	tx.EndorserSignature = env.Payload.PayloadData.Actions[0].ActionPayload.Action.Endorsements[0].Signature
+	saveTransaction(tx)
+}
+
+func getBlockMetaData(b *cb.Block) ledgerUtil.TxValidationFlags{
+	//md := &cb.Metadata{}
+	//_ = proto.Unmarshal(blockMetadata[0], md)
+	var txsfltr ledgerUtil.TxValidationFlags
+	txsfltr = b.Metadata.Metadata[cb.BlockMetadataIndex_TRANSACTIONS_FILTER]
+	return txsfltr
+}
+
+func getRwSet(rs model.Results)(string,string){
+	var reads []map[string]interface{}
+	var writes []map[string]interface{}
+
+	for i := 0 ; i < len(rs.NsRwSet) ;i++{
+		rm := make(map[string]interface{})
+		wm := make(map[string]interface{})
+		rm["chaincode"] = rs.NsRwSet[i].Namespace
+		rm["set"] = rs.NsRwSet[i].RwSet.Reads
+		wm["chaincode"] = rs.NsRwSet[i].Namespace
+		wm["set"] = rs.NsRwSet[i].RwSet.Writes
+		reads = append(reads,rm)
+		writes = append(writes,wm)
+	}
+
+	rss,_ := json.Marshal(reads)
+	wss,_ := json.Marshal(writes)
+
+	return string(rss),string(wss)
+}
+
+
+func getMSPIdFromEndorsement(endorsements []model.Endorsement) string {
+	//env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
+	//
+	//// ...and the payload...
+	//payl, err := utils.GetPayload(env)
+	//
+	//// ...and the transaction...
+	//tx, err := utils.GetTransaction(payl.Data)
+	//
+	//cap, err := utils.GetChaincodeActionPayload(tx.Actions[0].Payload)
+	mspid := "{"
+	for i := 0 ; i < len(endorsements) ; i++{
+		var sId msp.SerializedIdentity
+		_ = proto.Unmarshal(endorsements[i].Endorser, &sId)
+		if i == len(endorsements) - 1 {
+			mspid += "\""+ sId.GetMspid() + "\""
+		}else {
+			mspid += "\""+ sId.GetMspid() + "\","
+		}
+	}
+	mspid += "}"
+	return mspid
+}
+
+func blockFromProto2Struct(b *cb.Block) model.Blk{
+	buf := new (bytes.Buffer)
+	err := protolator.DeepMarshalJSON(buf, b)
+	err = protolator.DeepMarshalJSON(os.Stdout, b)
+	var blk model.Blk
+	json.Unmarshal(buf.Bytes(), &blk)
+	common.CheckErr(err)
+	return blk
 }
 
 type bHeader struct {
@@ -328,5 +479,30 @@ func discoveryRaw(){
 
 	fmt.Println(resp)
 	common.CheckErr(err)
+}
+
+func listenBlockEvent(ccp ccpcontext.ChannelProvider){
+	ec,err := event.New(ccp,event.WithBlockEvents())
+
+	if err !=nil {
+		fmt.Errorf("init event client error %s",err)
+	}
+
+	reg, notifier, err :=ec.RegisterBlockEvent()
+
+	if err != nil {
+		fmt.Printf("Failed to register block event: %s", err)
+		return
+	}
+	defer ec.Unregister(reg)
+
+	var bEvent *fab.BlockEvent
+	select {
+	case bEvent = <-notifier:
+		fmt.Printf("receive block event %v",bEvent)
+	case <-time.After(time.Second * 200000):
+		fmt.Printf("Did NOT receive block event\n")
+	}
+
 }
 

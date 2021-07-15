@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/lifegoeson/blockchain-explorer/common"
 	"github.com/lifegoeson/blockchain-explorer/model"
 	"log"
@@ -150,6 +151,8 @@ func saveBlock(block model.Block) bool {
 	if count > 0 {
 		return false
 	}
+
+	fmt.Println(block)
 	//插入区块
 	insertText := `insert into blocks(blocknum, datahash, prehash, txcount, createdt, prev_blockhash, blockhash, channel_genesis_hash)  values ($1,$2,$3,$4,$5,$6,$7,$8)`
 	result, err := db.Exec(insertText,block.BlockNum,block.DataHash,block.PreHash,block.TxCount,block.CreateAt,block.PrevBlockHash,block.BlockHash,block.ChannelGenesisHash)
@@ -180,8 +183,9 @@ func saveTransaction(tx model.Transaction) bool {
 	if count > 0 {
 		return false
 	}
+	fmt.Println(tx)
 	//插入交易
-	insertText := `insert into transactions(blockid, txhash, createdt, chaincodename, status, creator_msp_id, endorser_msp_id, chaincode_id, type, read_set, write_set, channel_genesis_hash, validation_code, envelope_signature, payload_extension, creator_id_bytes, creator_nonce, chaincode_proposal_input, tx_response, payload_proposal_hash, endorser_id_bytes, endorser_signature) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`
+	insertText := `insert into transactions(blockid, txhash, createdt, chaincodename, status, creator_msp_id, endorser_msp_id, chaincode_id, type, read_set, write_set, channel_genesis_hash, validation_code, envelope_signature, payload_extension, creator_id_bytes, creator_nonce, chaincode_proposal_input, tx_response, payload_proposal_hash, endorser_id_bytes, endorser_signature) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`
 	result, err := db.Exec(insertText,tx.BlockId,tx.TxHash,tx.CreateAt,tx.ChaincodeName,tx.Status,tx.CreatorMspId,tx.EndorserMspId,tx.ChaincodeId,tx.Type,tx.ReadSet,tx.WriteSet,tx.ChannelGenesisHash,tx.ValidationCode,tx.EnvelopeSignature,tx.PayloadExtension,tx.CreatorIdBytes,tx.CreatorNonce,tx.ChaincodeProposalInput,tx.TxResponse,tx.PayloadProposalHash,tx.EndorserIdBytes,tx.EndorserSignature)
 	common.CheckErr(err)
 	if _,err = result.RowsAffected() ; err != nil {
