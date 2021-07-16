@@ -80,7 +80,7 @@ type Transaction struct {
 	TxHash string `json:"txhash"`
 	CreateAt     time.Time `json:"createat"`
 	ChaincodeName string `json:"chaincodename"`
-	Status int64 `json:"status"`
+	Status int32 `json:"status"`
 	CreatorMspId string `json:"creator_msp_id"`
 	EndorserMspId string `json:"endorser_msp_id"`
 	ChaincodeId string `json:"chaincode_id"`

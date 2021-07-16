@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/lifegoeson/blockchain-explorer/common"
 	"github.com/lifegoeson/blockchain-explorer/model"
 	"log"
@@ -140,7 +139,7 @@ func existChannel(channelName string) bool {
 	return count > 0
 }
 
-func saveBlock(block model.Block) bool {
+func saveBlock(block *model.Block) bool {
 	//判断区块是否存在
 	queryText := `select count(1) as c from blocks where blocknum= $1 and txcount= $2 and channel_genesis_hash= $3 and prehash=$4 and datahash= $5`
 	row := db.QueryRow(queryText,block.BlockNum,block.TxCount,block.ChannelGenesisHash,block.PrevBlockHash,block.DataHash)
@@ -152,7 +151,7 @@ func saveBlock(block model.Block) bool {
 		return false
 	}
 
-	fmt.Println(block)
+	//fmt.Println(block)
 	//插入区块
 	insertText := `insert into blocks(blocknum, datahash, prehash, txcount, createdt, prev_blockhash, blockhash, channel_genesis_hash)  values ($1,$2,$3,$4,$5,$6,$7,$8)`
 	result, err := db.Exec(insertText,block.BlockNum,block.DataHash,block.PreHash,block.TxCount,block.CreateAt,block.PrevBlockHash,block.BlockHash,block.ChannelGenesisHash)
@@ -172,7 +171,7 @@ func saveBlock(block model.Block) bool {
 	return true
 }
 
-func saveTransaction(tx model.Transaction) bool {
+func saveTransaction(tx *model.Transaction) bool {
 	//判断交易是否存在
 	queryText := `select count(1) as c from transactions where blockid= $1 and txhash= $2 and channel_genesis_hash= $3`
 	row := db.QueryRow(queryText,tx.BlockId,tx.TxHash,tx.ChannelGenesisHash)
@@ -183,7 +182,7 @@ func saveTransaction(tx model.Transaction) bool {
 	if count > 0 {
 		return false
 	}
-	fmt.Println(tx)
+	//fmt.Println(tx)
 	//插入交易
 	insertText := `insert into transactions(blockid, txhash, createdt, chaincodename, status, creator_msp_id, endorser_msp_id, chaincode_id, type, read_set, write_set, channel_genesis_hash, validation_code, envelope_signature, payload_extension, creator_id_bytes, creator_nonce, chaincode_proposal_input, tx_response, payload_proposal_hash, endorser_id_bytes, endorser_signature) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`
 	result, err := db.Exec(insertText,tx.BlockId,tx.TxHash,tx.CreateAt,tx.ChaincodeName,tx.Status,tx.CreatorMspId,tx.EndorserMspId,tx.ChaincodeId,tx.Type,tx.ReadSet,tx.WriteSet,tx.ChannelGenesisHash,tx.ValidationCode,tx.EnvelopeSignature,tx.PayloadExtension,tx.CreatorIdBytes,tx.CreatorNonce,tx.ChaincodeProposalInput,tx.TxResponse,tx.PayloadProposalHash,tx.EndorserIdBytes,tx.EndorserSignature)

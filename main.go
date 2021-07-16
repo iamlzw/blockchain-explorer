@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	_ "github.com/lib/pq"
 	"github.com/lifegoeson/blockchain-explorer/common"
 	"github.com/lifegoeson/blockchain-explorer/model"
+	"github.com/spf13/viper"
+	"io/ioutil"
 	"time"
 )
 
@@ -51,12 +54,13 @@ func main() {
 	//queryChaincodeInfo(sdk)
 	//queryGenesisBlock(sdk)
 	syncBlocks(sdk,"mychannel","e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
-	//initChannels(sdk)
+	initChannels(sdk)
 	//certByte2Pem()
 	//getTxCountByBlockNum("",4)
 	//discoveryTest("mychannel")
 	//discoveryRaw()
 
+	//tesetViper()
 	//getBlockAndTxList("111",time.Date(2021,time.June,23,10,0,0,0,time.UTC),time.Date(2021,time.June,23,10,0,0,0,time.UTC), "")
 }
 
@@ -69,5 +73,13 @@ func testSaveTransaction(){
 		Status: 200,
 		CreatorMspId: "Org1MSP",
 	}
-	saveTransaction(tx)
+	saveTransaction(&tx)
+}
+
+func tesetViper(){
+	blkFile, _ := ioutil.ReadFile("blockfiles/mychannel_0.json")
+	v := viper.New()
+	v.SetConfigType("json")
+	v.MergeConfig(bytes.NewBuffer(blkFile))
+	_ = v.MergeInConfig()
 }

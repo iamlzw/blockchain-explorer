@@ -13,6 +13,7 @@ require (
 	github.com/hyperledger/fabric-sdk-go v1.0.0
 	github.com/lib/pq v1.10.2
 	github.com/pkg/errors v0.9.1
+	github.com/spf13/viper v1.3.2
 	github.com/sykesm/zap-logfmt v0.0.4 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	go.uber.org/zap v1.18.1 // indirect
