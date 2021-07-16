@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/tools/protolator"
+	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	ledgerUtil "github.com/hyperledger/fabric/core/ledger/util"
 	"github.com/spf13/viper"
 
@@ -37,8 +38,6 @@ import (
 
 	cb "github.com/hyperledger/fabric/protos/common"
 	discoverypb "github.com/hyperledger/fabric/protos/discovery"
-	lb "github.com/hyperledger/fabric/protos/ledger/rwset"
-	kvb "github.com/hyperledger/fabric/protos/ledger/rwset/kvrwset"
 	msp "github.com/hyperledger/fabric/protos/msp"
 	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
@@ -176,10 +175,10 @@ func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string){
 	var i uint64
 	for i = 1 ; i < chainInfos.BCI.Height ; i++{
 		b ,err = ledgerClient.QueryBlock(i)
-		//err = protolator.DeepMarshalJSON(os.Stdout, b)
-		//if err != nil {
-		//	fmt.Errorf("malformed block contents: %s", err)
-		//}
+		err = protolator.DeepMarshalJSON(os.Stdout, b)
+		if err != nil {
+			fmt.Errorf("malformed block contents: %s", err)
+		}
 
 		//bs := blockFromProto2Struct(b)
 		bb.BlockNum = int64(b.Header.Number)
@@ -225,14 +224,17 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 	tx.PayloadExtension = hex.EncodeToString(payload_extension)
 	tx.CreatorIdBytes = string(sId2.IdBytes)
 	tx.CreatorNonce = hex.EncodeToString(sdr.Nonce)
-	fmt.Println(header_type)
+	var sId msp.SerializedIdentity
+	_ = proto.Unmarshal(sdr.Creator, &sId)
+	tx.CreatorMspId = sId.Mspid
+	//fmt.Println(header_type)
 	tx.Type = cb.HeaderType(header_type).String()
 	if header_type == int32(3) {
 		ccActionPayload, err := utils.GetChaincodeActionPayload(t.Actions[0].Payload)
 		if err != nil {
 			log.Fatal(err)
 		}
-		ccActionHeader,err := utils.UnmarshalSignatureHeader(t.Actions[0].Header)
+		//ccActionHeader,err := utils.UnmarshalSignatureHeader(t.Actions[0].Header)
 		prp, err := utils.GetProposalResponsePayload(ccActionPayload.Action.ProposalResponsePayload)
 		if err != nil {
 			log.Fatal(err)
@@ -240,15 +242,15 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 		caPayload, err := utils.GetChaincodeAction(prp.Extension)
 		tx.ChaincodeName = caPayload.ChaincodeId.Name
 		tx.Status = caPayload.Response.Status
-		var sId msp.SerializedIdentity
-		_ = proto.Unmarshal(ccActionHeader.Creator, &sId)
-		tx.CreatorMspId = sId.Mspid
 		tx.EndorserMspId = getMSPIdFromEndorsement(ccActionPayload.Action.Endorsements)
 		tx.ChaincodeId = ""
 		//tx.Type = string(cb.HeaderType(chdr.Type))
-		var results lb.TxReadWriteSet
-		_ = proto.Unmarshal(caPayload.Results, &results)
-		tx.ReadSet,tx.WriteSet = getRwSet(results.NsRwset)
+		//var results
+		t2 := &rwsetutil.TxRwSet{}
+		_ = t2.FromProtoBytes(caPayload.Results)
+		//var results lb.TxReadWriteSet
+		//_ = proto.Unmarshal(caPayload.Results, &t2)
+		tx.ReadSet,tx.WriteSet = getRwSet(t2.NsRwSets)
 		tx.ChannelGenesisHash = channelGenesisHash
 		tx.ValidationCode = txsfltr.Flag(txIndex).String()
 		tx.PayloadProposalHash = hex.EncodeToString(prp.ProposalHash)
@@ -298,21 +300,21 @@ func getBlockMetaData(b *cb.Block) ledgerUtil.TxValidationFlags{
 	return txsfltr
 }
 
-func getRwSet(nss []*lb.NsReadWriteSet)(string,string){
+func getRwSet(nss []*rwsetutil.NsRwSet)(string,string){
 	var reads []map[string]interface{}
 	var writes []map[string]interface{}
 
 	for i := 0 ; i < len(nss) ;i++{
-		var nsRwSet lb.NsReadWriteSet
-		_ = proto.Unmarshal(nss[i].Rwset,&nsRwSet)
+		//var nsRwSet lb.NsReadWriteSet
+		//_ = proto.Unmarshal(nss[i].KvRwSet.,&nsRwSet)
 		rm := make(map[string]interface{})
 		wm := make(map[string]interface{})
-		var rwset kvb.KVRWSet
-		_ = proto.Unmarshal(nsRwSet.Rwset,&rwset)
-		rm["chaincode"] = nsRwSet.Namespace
-		rm["set"] = rwset.Reads
-		wm["chaincode"] = nsRwSet.Namespace
-		wm["set"] = rwset.Writes
+		//var rwset kvb.KVRWSet/
+		//_ = proto.Unmarshal(nss[i].KvRwSet.,&rwset)
+		rm["chaincode"] = nss[i].NameSpace
+		rm["set"] = nss[i].KvRwSet.Reads
+		wm["chaincode"] = nss[i].NameSpace
+		wm["set"] = nss[i].KvRwSet.Writes
 		reads = append(reads,rm)
 		writes = append(writes,wm)
 	}
@@ -325,15 +327,6 @@ func getRwSet(nss []*lb.NsReadWriteSet)(string,string){
 
 
 func getMSPIdFromEndorsement(endorsements []*pb.Endorsement) string {
-	//env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
-	//
-	//// ...and the payload...
-	//payl, err := utils.GetPayload(env)
-	//
-	//// ...and the transaction...
-	//tx, err := utils.GetTransaction(payl.Data)
-	//
-	//cap, err := utils.GetChaincodeActionPayload(tx.Actions[0].Payload)
 	mspid := "{"
 	for i := 0 ; i < len(endorsements) ; i++{
 		var sId msp.SerializedIdentity
