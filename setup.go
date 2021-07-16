@@ -171,36 +171,63 @@ func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string){
 	ledgerClient, err := ledger.New(ccp)
 	chainInfos,err := ledgerClient.QueryInfo()
 	var b *cb.Block
-	bb:= new(model.Block)
+	//bb:= new(model.Block)
 	var i uint64
 	for i = 1 ; i < chainInfos.BCI.Height ; i++{
 		b ,err = ledgerClient.QueryBlock(i)
-		err = protolator.DeepMarshalJSON(os.Stdout, b)
-		if err != nil {
-			fmt.Errorf("malformed block contents: %s", err)
-		}
+		//err = protolator.DeepMarshalJSON(os.Stdout, b)
+		//if err != nil {
+		//	fmt.Errorf("malformed block contents: %s", err)
+		//}
 
 		//bs := blockFromProto2Struct(b)
-		bb.BlockNum = int64(b.Header.Number)
-		bb.PrevBlockHash = ""
-		bb.ChannelGenesisHash = channelGenesisHash
-		//fmt.Println(bs.Get("header.data_hash"))
-		bb.TxCount = int64(len(b.Data.Data))
-		bb.DataHash = hex.EncodeToString(b.Header.DataHash)
-		bb.PreHash = hex.EncodeToString(b.Header.PreviousHash)
-		//fmt.Println(b.Header.Bytes()
-		bb.BlockHash = hex.EncodeToString(b.Header.Hash())
-		env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
-		payload,err := utils.GetPayload(env)
-		chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
-		bb.CreateAt = chdr.Timestamp.AsTime()
-		saveBlock(bb)
-		txsfltr := getBlockMetaData(b)
-		for j := 0 ; j < len(b.Data.Data) ; j++{
-			e, _ := utils.GetEnvelopeFromBlock(b.Data.Data[j])
-			syncTx(e,txsfltr,bb.BlockNum,channelGenesisHash,j,chdr.Extension,chdr.Type)
-		}
-		common.CheckErr(err)
+		constructBlock(b,channelGenesisHash)
+		//bb.BlockNum = int64(b.Header.Number)
+		//bb.PrevBlockHash = ""
+		//bb.ChannelGenesisHash = channelGenesisHash
+		////fmt.Println(bs.Get("header.data_hash"))
+		//bb.TxCount = int64(len(b.Data.Data))
+		//bb.DataHash = hex.EncodeToString(b.Header.DataHash)
+		//bb.PreHash = hex.EncodeToString(b.Header.PreviousHash)
+		////fmt.Println(b.Header.Bytes()
+		//bb.BlockHash = hex.EncodeToString(b.Header.Hash())
+		//env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
+		//payload,err := utils.GetPayload(env)
+		//chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+		//bb.CreateAt = chdr.Timestamp.AsTime()
+		//saveBlock(bb)
+		//txsfltr := getBlockMetaData(b)
+		//for j := 0 ; j < len(b.Data.Data) ; j++{
+		//	e, _ := utils.GetEnvelopeFromBlock(b.Data.Data[j])
+		//	syncTx(e,txsfltr,bb.BlockNum,channelGenesisHash,j,chdr.Extension,chdr.Type)
+		//}
+		//common.CheckErr(err)
+	}
+	common.CheckErr(err)
+	go listenBlockEvent(ccp)
+
+}
+
+func constructBlock(b *cb.Block,channelGenesisHash string){
+	bb:= new(model.Block)
+	bb.BlockNum = int64(b.Header.Number)
+	bb.PrevBlockHash = ""
+	bb.ChannelGenesisHash = channelGenesisHash
+	//fmt.Println(bs.Get("header.data_hash"))
+	bb.TxCount = int64(len(b.Data.Data))
+	bb.DataHash = hex.EncodeToString(b.Header.DataHash)
+	bb.PreHash = hex.EncodeToString(b.Header.PreviousHash)
+	//fmt.Println(b.Header.Bytes()
+	bb.BlockHash = hex.EncodeToString(b.Header.Hash())
+	env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
+	payload,err := utils.GetPayload(env)
+	chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	bb.CreateAt = chdr.Timestamp.AsTime()
+	saveBlock(bb)
+	txsfltr := getBlockMetaData(b)
+	for j := 0 ; j < len(b.Data.Data) ; j++{
+		e, _ := utils.GetEnvelopeFromBlock(b.Data.Data[j])
+		syncTx(e,txsfltr,bb.BlockNum,channelGenesisHash,j,chdr.Extension,chdr.Type)
 	}
 	common.CheckErr(err)
 }
@@ -545,10 +572,11 @@ func listenBlockEvent(ccp ccpcontext.ChannelProvider){
 	var bEvent *fab.BlockEvent
 	select {
 	case bEvent = <-notifier:
-		fmt.Printf("receive block event %v",bEvent)
-	case <-time.After(time.Second * 200000):
+		//fmt.Printf("receive block event %v",bEvent)
+		b := bEvent.Block
+		constructBlock(b,"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+	case <-time.After(time.Second * 2000000):
 		fmt.Printf("Did NOT receive block event\n")
 	}
-
 }
 

@@ -62,6 +62,7 @@ func main() {
 
 	//tesetViper()
 	//getBlockAndTxList("111",time.Date(2021,time.June,23,10,0,0,0,time.UTC),time.Date(2021,time.June,23,10,0,0,0,time.UTC), "")
+	time.Sleep(10000000000)
 }
 
 func testSaveTransaction(){
