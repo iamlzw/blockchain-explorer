@@ -142,11 +142,12 @@ func existChannel(channelName string) bool {
 func saveBlock(block *model.Block) bool {
 	//判断区块是否存在
 	queryText := `select count(1) as c from blocks where blocknum= $1 and txcount= $2 and channel_genesis_hash= $3 and prehash=$4 and datahash= $5`
-	row := db.QueryRow(queryText,block.BlockNum,block.TxCount,block.ChannelGenesisHash,block.PrevBlockHash,block.DataHash)
+	row := db.QueryRow(queryText,block.BlockNum,block.TxCount,block.ChannelGenesisHash,block.PreHash,block.DataHash)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		log.Fatal(err)
 	}
+	//fmt.Println(count)
 	if count > 0 {
 		return false
 	}
@@ -175,11 +176,12 @@ func saveTransaction(tx *model.Transaction) bool {
 	//判断交易是否存在
 	queryText := `select count(1) as c from transactions where blockid= $1 and txhash= $2 and channel_genesis_hash= $3`
 	row := db.QueryRow(queryText,tx.BlockId,tx.TxHash,tx.ChannelGenesisHash)
-	var count int
+	var count int64
 	if err := row.Scan(&count); err != nil {
 		log.Fatal(err)
 	}
-	if count > 0 {
+	//fmt.Println(count)
+	if count > 0{
 		return false
 	}
 	//fmt.Println(tx)

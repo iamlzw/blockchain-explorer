@@ -15,14 +15,12 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	ledgerUtil "github.com/hyperledger/fabric/core/ledger/util"
 	"github.com/spf13/viper"
-
 	//"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/event"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/resmgmt"
 	ccpcontext "github.com/hyperledger/fabric-sdk-go/pkg/common/providers/context"
 	"github.com/hyperledger/fabric-sdk-go/pkg/common/providers/fab"
-	"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
 	configImpl "github.com/hyperledger/fabric-sdk-go/pkg/core/config"
 	fabImpl "github.com/hyperledger/fabric-sdk-go/pkg/fab"
 	"github.com/hyperledger/fabric-sdk-go/pkg/fab/peer"
@@ -42,6 +40,7 @@ import (
 	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/lifegoeson/blockchain-explorer/common"
+	"github.com/lifegoeson/blockchain-explorer/defaultclient"
 	"github.com/lifegoeson/blockchain-explorer/model"
 	"io"
 	"io/ioutil"
@@ -51,7 +50,6 @@ import (
 
 	//"github.com/hyperledger/fabric/protos/utils"
 )
-
 const (
 	orgName = "Org1"
 	orgUser = "User1"
@@ -63,36 +61,33 @@ const (
 	)
 
 	//init the sdk
-func initSDK() *fabsdk.FabricSDK {
-	//// Initialize the SDK with the configuration file
-	configProvider := config.FromFile("config_e2e.yaml")
-	sdk, err := fabsdk.New(configProvider)
-	if err != nil {
-		fmt.Errorf("failed to create sdk: %v", err)
-	}
+//func initSDK() *fabsdk.FabricSDK {
+//	//// Initialize the SDK with the configuration file
+//	configProvider := config.FromFile("config_e2e.yaml")
+//	sdk, err := fabsdk.New(configProvider)
+//	if err != nil {
+//		fmt.Errorf("failed to create sdk: %v", err)
+//	}
+//
+//	return sdk
+//}
+//
+//type ServiceResponse interface {
+//	// ForChannel returns a ChannelResponse in the context of a given channel
+//	ForChannel(string) discovery.ChannelResponse
+//
+//	// ForLocal returns a LocalResponse in the context of no channel
+//	ForLocal() discovery.LocalResponse
+//
+//	// Raw returns the raw response from the server
+//	Raw() *discoverypb.Response
+//}
 
-	return sdk
-}
+func initChannels(){
+	orgResMgmt := defaultclient.GetInstance().DefaultResmgmt
+	sdk := defaultclient.GetInstance().DefaultFabSdk
 
-type ServiceResponse interface {
-	// ForChannel returns a ChannelResponse in the context of a given channel
-	ForChannel(string) discovery.ChannelResponse
-
-	// ForLocal returns a LocalResponse in the context of no channel
-	ForLocal() discovery.LocalResponse
-
-	// Raw returns the raw response from the server
-	Raw() *discoverypb.Response
-}
-
-func initChannels(sdk *fabsdk.FabricSDK){
-	adminContext := sdk.Context(fabsdk.WithUser(orgAdmin), fabsdk.WithOrg(orgName))
-	
-	orgResMgmt, err := resmgmt.New(adminContext)
-	if err != nil {
-		fmt.Println("Failed to create new resource management client: %s", err)
-	}
-	configBackend, err := configImpl.FromFile("config_e2e.yaml")()
+	configBackend, err := configImpl.FromFile("config/config_e2e.yaml")()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -115,7 +110,7 @@ func initChannels(sdk *fabsdk.FabricSDK){
 		if err != nil{
 			fmt.Println(err)
 		}
-		channelGenesisHash := hex.EncodeToString(block.Header.Bytes())
+		channelGenesisHash := hex.EncodeToString(block.Header.Hash())
 		chl := model.Channel{Name:chlName,
 			Blocks: 0,
 			Trans: 1,
@@ -128,7 +123,9 @@ func initChannels(sdk *fabsdk.FabricSDK){
 			ChannelVersion: nil,
 		}
 		saveChannel(chl)
-		discoveryTest(sdk,channelName,channelGenesisHash,orgResMgmt)
+		constructBlock(block,channelGenesisHash)
+		discoveryFunc(sdk,channelName,channelGenesisHash,orgResMgmt)
+		syncBlocks(sdk,channelName,channelGenesisHash)
 	}
 }
 
@@ -143,25 +140,7 @@ func queryChaincodeInfo(sdk *fabsdk.FabricSDK,channelName string) *pb.ChaincodeQ
 	if err != nil {
 		fmt.Println("Failed to create new resource management client: %s", err)
 	}
-
-	//configBackend, err := configImpl.FromFile("config_e2e.yaml")()
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//cfg, err := fabImpl.ConfigFromBackend(configBackend...)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
 	common.CheckErr(err)
-	//p,err  := peer.New(cfg,peer.WithURL(peerUrl),peer.WithTLSCert(loadCertificate(tlscapath)),peer.WithServerName(serverName))
-	//chlInfos,err := orgResMgmt.QueryChannels(resmgmt.WithTargets(p))
-	//common.CheckErr(err)
-	//chls := chlInfos.Channels
-	//var i int
-	//for i = 0 ; i < len(chls) ; i++ {
-	//	fmt.Println(chls[i].ChannelId)
-	//}
 	chaincodeInfo,err :=orgResMgmt.QueryInstantiatedChaincodes("mychannel")
 	return chaincodeInfo
 }
@@ -175,37 +154,10 @@ func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string){
 	var i uint64
 	for i = 1 ; i < chainInfos.BCI.Height ; i++{
 		b ,err = ledgerClient.QueryBlock(i)
-		//err = protolator.DeepMarshalJSON(os.Stdout, b)
-		//if err != nil {
-		//	fmt.Errorf("malformed block contents: %s", err)
-		//}
-
-		//bs := blockFromProto2Struct(b)
 		constructBlock(b,channelGenesisHash)
-		//bb.BlockNum = int64(b.Header.Number)
-		//bb.PrevBlockHash = ""
-		//bb.ChannelGenesisHash = channelGenesisHash
-		////fmt.Println(bs.Get("header.data_hash"))
-		//bb.TxCount = int64(len(b.Data.Data))
-		//bb.DataHash = hex.EncodeToString(b.Header.DataHash)
-		//bb.PreHash = hex.EncodeToString(b.Header.PreviousHash)
-		////fmt.Println(b.Header.Bytes()
-		//bb.BlockHash = hex.EncodeToString(b.Header.Hash())
-		//env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
-		//payload,err := utils.GetPayload(env)
-		//chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
-		//bb.CreateAt = chdr.Timestamp.AsTime()
-		//saveBlock(bb)
-		//txsfltr := getBlockMetaData(b)
-		//for j := 0 ; j < len(b.Data.Data) ; j++{
-		//	e, _ := utils.GetEnvelopeFromBlock(b.Data.Data[j])
-		//	syncTx(e,txsfltr,bb.BlockNum,channelGenesisHash,j,chdr.Extension,chdr.Type)
-		//}
-		//common.CheckErr(err)
 	}
 	common.CheckErr(err)
-	go listenBlockEvent(ccp)
-
+	//listenBlockEvent(ccp)
 }
 
 func constructBlock(b *cb.Block,channelGenesisHash string){
@@ -213,7 +165,6 @@ func constructBlock(b *cb.Block,channelGenesisHash string){
 	bb.BlockNum = int64(b.Header.Number)
 	bb.PrevBlockHash = ""
 	bb.ChannelGenesisHash = channelGenesisHash
-	//fmt.Println(bs.Get("header.data_hash"))
 	bb.TxCount = int64(len(b.Data.Data))
 	bb.DataHash = hex.EncodeToString(b.Header.DataHash)
 	bb.PreHash = hex.EncodeToString(b.Header.PreviousHash)
@@ -313,8 +264,8 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 		}
 		tx.ReadSet = string(rset)
 		tx.WriteSet = string(wset)
+		tx.ChannelGenesisHash = channelGenesisHash
 	}
-
 	saveTransaction(tx)
 
 }
@@ -424,7 +375,7 @@ type ConfigResponseParser struct {
 	io.Writer
 }
 
-func discoveryTest(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash string,orgResMgmt *resmgmt.Client){
+func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash string,orgResMgmt *resmgmt.Client){
 	const (
 		server             = "peer0.org1.example.com:7051"
 		discoveryConfigPath = "config/discovery_config.yaml"
@@ -570,13 +521,13 @@ func listenBlockEvent(ccp ccpcontext.ChannelProvider){
 	defer ec.Unregister(reg)
 
 	var bEvent *fab.BlockEvent
-	select {
-	case bEvent = <-notifier:
-		//fmt.Printf("receive block event %v",bEvent)
-		b := bEvent.Block
-		constructBlock(b,"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
-	case <-time.After(time.Second * 2000000):
-		fmt.Printf("Did NOT receive block event\n")
+
+	for  {
+		select {
+		case bEvent = <-notifier:
+			b := bEvent.Block
+			constructBlock(b,"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+		}
 	}
 }
 
