@@ -90,7 +90,7 @@ func initChannels(){
 		channelGenesisHash := hex.EncodeToString(block.Header.Hash())
 		chl := model.Channel{Name:chlName,
 			Blocks: 0,
-			Trans: 1,
+			Trans: 0,
 			CreateAt: time.Now(),
 			ChannelGenesisHash: channelGenesisHash,
 			ChannelHash: "",
@@ -103,6 +103,7 @@ func initChannels(){
 		constructBlock(block,channelGenesisHash)
 		discoveryFunc(sdk,channelName,channelGenesisHash,orgResMgmt)
 		syncBlocks(sdk,channelName,channelGenesisHash)
+		go listenBlockEvent(ccp,channelGenesisHash)
 	}
 }
 
@@ -133,8 +134,9 @@ func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string){
 		b ,err = ledgerClient.QueryBlock(i)
 		constructBlock(b,channelGenesisHash)
 	}
-	common.CheckErr(err)
-	listenBlockEvent(ccp)
+	if err!= nil {
+		log.Fatal(err)
+	}
 }
 
 func constructBlock(b *cb.Block,channelGenesisHash string){
@@ -390,7 +392,7 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 		p.Org = 0
 		prc.CreateAt = time.Now()
 		prc.PeerType = "Orderer"
-		prc.ChannelId = channelName
+		prc.ChannelId = channelGenesisHash
 		prc.PeerId = v.GetEndpoint()[0].Host
 		service.SavePeer(p)
 		service.SavePeerChannelRef(prc)
@@ -415,7 +417,7 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 		p.ChannelGenesisHash = channelGenesisHash
 		p.Events = ""
 		prc.PeerId = strings.Split(peers[i].AliveMessage.GetAliveMsg().Membership.Endpoint,":")[0]
-		prc.ChannelId = channelName
+		prc.ChannelId = channelGenesisHash
 		prc.PeerType = "PEER"
 		prc.CreateAt = time.Now()
 		service.SavePeer(p)
@@ -430,7 +432,7 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 			cc.Path = cqi.Chaincodes[j].Path
 			cc.TxCount = 0
 			prcc.CreateAt = time.Now()
-			prcc.ChannelId = channelName
+			prcc.ChannelId = channelGenesisHash
 			prcc.CCVersion = cqi.Chaincodes[j].Version
 			prcc.ChaincodeId = cqi.Chaincodes[j].Name
 			prcc.PeerId = strings.Split(peers[i].AliveMessage.GetAliveMsg().Membership.Endpoint,":")[0]
@@ -481,7 +483,7 @@ func discoveryRaw(){
 	common.CheckErr(err)
 }
 
-func listenBlockEvent(ccp ccpcontext.ChannelProvider){
+func listenBlockEvent(ccp ccpcontext.ChannelProvider,channelGenesisHash string){
 	ec,err := event.New(ccp,event.WithBlockEvents())
 
 	if err !=nil {
@@ -502,7 +504,7 @@ func listenBlockEvent(ccp ccpcontext.ChannelProvider){
 		select {
 		case bEvent = <-notifier:
 			b := bEvent.Block
-			constructBlock(b,"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+			constructBlock(b,channelGenesisHash)
 		}
 	}
 }

@@ -16,6 +16,11 @@ func SqlOpen() {
 	common.CheckErr(err)
 }
 
+/*
+
+CURDService
+ */
+
 //根据创世hash以及区块号获取交易数量
 func GetTxCountByBlockNum(channelGenesisHash string, blockNum int64) model.GetTxCountByBlockNumResultModel{
 	//更新数据
@@ -152,7 +157,7 @@ func ExistChannel(channelName string) bool {
 func SaveBlock(block *model.Block) bool {
 	//判断区块是否存在
 	queryText := `select count(1) as c from blocks where blocknum= $1 and txcount= $2 and channel_genesis_hash= $3 and prehash=$4 and datahash= $5`
-	row := db.QueryRow(queryText,block.BlockNum,block.TxCount,block.ChannelGenesisHash,block.PrevBlockHash,block.DataHash)
+	row := db.QueryRow(queryText,block.BlockNum,block.TxCount,block.ChannelGenesisHash,block.PreHash,block.DataHash)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		log.Fatal(err)
@@ -406,10 +411,110 @@ func GetChannelRefPeers(channelid string)([]model.GetChannelRefPeersResultModel,
 		}
 		results = append(results,result)
 	}
-
 	return results,nil
-
 }
+
+/*
+MetricService
+*/
+
+func GetChaincodeCount(channelGenesisHash string) int{
+	queryText := `select count(1) as c from chaincodes where channel_genesis_hash= $1`
+	row := db.QueryRow(queryText,channelGenesisHash)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		log.Fatal(err)
+	}
+	return count
+}
+
+func GetPeerlistCount(channelGenesisHash string) int{
+	queryText := `select count(1) c from peer where channel_genesis_hash=$1 and peer_type='PEER' `
+	row := db.QueryRow(queryText,channelGenesisHash)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		log.Fatal(err)
+	}
+	return count
+}
+
+func GetTxCount(channelGenesisHash string) int{
+	queryText := `select count(1) c from transactions where channel_genesis_hash=$1`
+	row := db.QueryRow(queryText,channelGenesisHash)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		log.Fatal(err)
+	}
+	return count
+}
+
+func GetBlockCount(channelGenesisHash string) int{
+	queryText := `select count(1) c from blocks where channel_genesis_hash=$1`
+	row := db.QueryRow(queryText,channelGenesisHash)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		log.Fatal(err)
+	}
+	return count
+}
+
+func GetPeerData(channelGenesisHash string) []model.GetPeerDataResultModel {
+	queryText := `select channel.name as channelName,c.requests as requests,c.channel_genesis_hash as channel_genesis_hash ,
+    c.server_hostname as server_hostname, c.mspid as mspid, c.peer_type as peer_type  from peer as c inner join  channel on
+    c.channel_genesis_hash=channel.channel_genesis_hash where c.channel_genesis_hash=$1`
+
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+	var p model.GetPeerDataResultModel
+	var ps []model.GetPeerDataResultModel
+	for rows.Next() {
+		if err = rows.Scan(&p.ChannelName,&p.Requests,&p.ChannelGenesisHash,&p.ServerHostName,&p.MSPId,&p.PeerType); err != nil {
+			log.Fatal(err)
+		}
+		ps = append(ps,p)
+	}
+	return ps
+}
+//获取对应智能合约所生成的交易信息
+func GetTxPerChaincodeGenerate(channelGenesisHash string) []model.GetTxPerChaincodeGenerateResultModel{
+	queryText := `select  c.name as chaincodename,channel.name as channelname ,c.version as version,c.channel_genesis_hash
+       as channel_genesis_hash,c.path as path ,txcount as c from chaincodes as c inner join channel on c.channel_genesis_hash=channel.channel_genesis_hash where  c.channel_genesis_hash=$1 `
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+	var r model.GetTxPerChaincodeGenerateResultModel
+	var rs []model.GetTxPerChaincodeGenerateResultModel
+	for rows.Next() {
+		if err = rows.Scan(&r.ChaincodeName,&r.ChannelName,&r.Version,&r.ChannelGenesisHash,&r.Path,&r.TxCount); err != nil {
+			log.Fatal(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
+}
+func GetOrgsData(channelGenesisHash string) []string{
+	queryText := `select distinct on (mspid) mspid from peer  where channel_genesis_hash=$1`
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+	var r string
+	var rs []string
+	for rows.Next() {
+		if err = rows.Scan(&r); err != nil {
+			log.Fatal(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
+}
+
+
+
+
 
 
 

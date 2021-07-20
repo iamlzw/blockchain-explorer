@@ -13,11 +13,11 @@ import (
 func main() {
 	service.SqlOpen()
 	defaultclient.GetInstance()
+	initChannels()
 	r := server.InitRouter()
 	err := r.Run()
 	if err != nil {
 		log.Fatal(err)
 	}
-	initChannels()
 }
 

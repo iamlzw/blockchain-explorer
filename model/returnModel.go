@@ -60,3 +60,25 @@ type GetChannelRefPeersResultModel struct{
 	ChannelId string
 	PeerType string
 }
+
+type GetPeerDataResultModel struct {
+	ChannelName string
+	Requests string
+	ChannelGenesisHash string
+	ServerHostName string
+	MSPId string
+	PeerType string
+}
+
+type GetTxPerChaincodeGenerateResultModel struct {
+	ChaincodeName string
+	ChannelName string
+	Version string
+	ChannelGenesisHash string
+	Path string
+	TxCount int
+}
+
+type GetOrgDataResultModel struct {
+
+}

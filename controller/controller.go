@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/lifegoeson/blockchain-explorer/defaultclient"
 	"github.com/lifegoeson/blockchain-explorer/service"
 	"strconv"
 )
@@ -66,9 +67,34 @@ func GetTxList(c *gin.Context){
 }
 
 func GetBaseInfos(c * gin.Context){
-	//chlInfos := service.GetCurBlockNum("2dfaf3fa74316ef1b0b476d5535de673ab2516cab93664237bdf3e441558cf6d")
-	//chls := service.GetChannelsInfo("peer0.org1.example.ocm")
-	//peerInfos, _ := service.GetChannelRefPeers(chls[0].ChannelName)
+	m := make(map[string]interface{})
+	//获取通道信息
+	chls := service.GetChannelsInfo(defaultclient.GetInstance().DefaultServerName)
+	peerInfos:= service.GetPeerData(defaultclient.GetInstance().DefaultChannelGenHash)
+	ccs := service.GetChaincodeCount(defaultclient.GetInstance().DefaultChannelGenHash)
+	txCount := service.GetTxCount(defaultclient.GetInstance().DefaultChannelGenHash)
+	blkActivity := service.GetBlockActivityList(defaultclient.GetInstance().DefaultChannelGenHash)
+	blkCount := service.GetBlockCount(defaultclient.GetInstance().DefaultChannelGenHash)
+
+	for _, chl := range chls{
+		if chl.ChannelGenesisHash == defaultclient.GetInstance().DefaultChannelGenHash {
+			m["defaultchannel"] = chl
+		}
+	}
+	m["chls"] = chls
+	m["peers"] = peerInfos
+	m["ccs"] = ccs
+	m["txCount"] = txCount
+	m["blkActivity"] = blkActivity
+	m["blkCount"] = blkCount
+	c.JSON(200,m)
 }
+
+func GetPeerInfos(c *gin.Context){
+	//channelGenesisHash := c.GetString("channelGenesisHash")
+	peerInfos:= service.GetPeerData(defaultclient.GetInstance().DefaultChannelGenHash)
+	c.JSON(200,peerInfos)
+}
+
 
 
