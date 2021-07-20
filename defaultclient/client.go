@@ -29,7 +29,6 @@ var once sync.Once
 func GetInstance() *defaultclient {
 	once.Do(func() {
 		instance = &defaultclient{}
-		//defaultConfigFile, _ := ioutil.ReadFile("config/default_config.yaml")
 		v := viper.New()
 		v.SetConfigType("yaml")
 		v.SetConfigFile("config/default_config.yaml")

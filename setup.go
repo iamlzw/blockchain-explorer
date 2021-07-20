@@ -26,7 +26,7 @@ import (
 	"github.com/hyperledger/fabric-sdk-go/pkg/fab/peer"
 	"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
 	"github.com/hyperledger/fabric/cmd/common/comm"
-	_ "github.com/hyperledger/fabric/cmd/common/comm"
+	cmdcommon "github.com/hyperledger/fabric/cmd/common"
 	"github.com/hyperledger/fabric/cmd/common/signer"
 	_ "github.com/hyperledger/fabric/cmd/common/signer"
 	discovery "github.com/hyperledger/fabric/discovery/client"
@@ -42,6 +42,7 @@ import (
 	"github.com/lifegoeson/blockchain-explorer/common"
 	"github.com/lifegoeson/blockchain-explorer/defaultclient"
 	"github.com/lifegoeson/blockchain-explorer/model"
+	"github.com/lifegoeson/blockchain-explorer/service"
 	"io"
 	"io/ioutil"
 	"log"
@@ -59,30 +60,6 @@ const (
 	channelName = "mychannel"
 	tlscapath = "E:\\workspace\\go\\src\\github.com\\lifegoeson\\blockchain-explorer\\crypto-config\\peerOrganizations\\org1.example.com\\tlsca\\tlsca.org1.example.com-cert.pem"
 	)
-
-	//init the sdk
-//func initSDK() *fabsdk.FabricSDK {
-//	//// Initialize the SDK with the configuration file
-//	configProvider := config.FromFile("config_e2e.yaml")
-//	sdk, err := fabsdk.New(configProvider)
-//	if err != nil {
-//		fmt.Errorf("failed to create sdk: %v", err)
-//	}
-//
-//	return sdk
-//}
-//
-//type ServiceResponse interface {
-//	// ForChannel returns a ChannelResponse in the context of a given channel
-//	ForChannel(string) discovery.ChannelResponse
-//
-//	// ForLocal returns a LocalResponse in the context of no channel
-//	ForLocal() discovery.LocalResponse
-//
-//	// Raw returns the raw response from the server
-//	Raw() *discoverypb.Response
-//}
-
 func initChannels(){
 	orgResMgmt := defaultclient.GetInstance().DefaultResmgmt
 	sdk := defaultclient.GetInstance().DefaultFabSdk
@@ -122,7 +99,7 @@ func initChannels(){
 			ChannelTx: nil,
 			ChannelVersion: nil,
 		}
-		saveChannel(chl)
+		service.SaveChannel(chl)
 		constructBlock(block,channelGenesisHash)
 		discoveryFunc(sdk,channelName,channelGenesisHash,orgResMgmt)
 		syncBlocks(sdk,channelName,channelGenesisHash)
@@ -157,7 +134,7 @@ func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string){
 		constructBlock(b,channelGenesisHash)
 	}
 	common.CheckErr(err)
-	//listenBlockEvent(ccp)
+	listenBlockEvent(ccp)
 }
 
 func constructBlock(b *cb.Block,channelGenesisHash string){
@@ -174,7 +151,7 @@ func constructBlock(b *cb.Block,channelGenesisHash string){
 	payload,err := utils.GetPayload(env)
 	chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
 	bb.CreateAt = chdr.Timestamp.AsTime()
-	saveBlock(bb)
+	service.SaveBlock(bb)
 	txsfltr := getBlockMetaData(b)
 	for j := 0 ; j < len(b.Data.Data) ; j++{
 		e, _ := utils.GetEnvelopeFromBlock(b.Data.Data[j])
@@ -266,8 +243,7 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 		tx.WriteSet = string(wset)
 		tx.ChannelGenesisHash = channelGenesisHash
 	}
-	saveTransaction(tx)
-
+	service.SaveTransaction(tx)
 }
 
 func getBlockMetaData(b *cb.Block) ledgerUtil.TxValidationFlags{
@@ -380,7 +356,7 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 		server             = "peer0.org1.example.com:7051"
 		discoveryConfigPath = "config/discovery_config.yaml"
 	)
-	conf,err := ConfigFromFile(discoveryConfigPath)
+	conf,err := cmdcommon.ConfigFromFile(discoveryConfigPath)
 
 	client, err := comm.NewClient(conf.TLSConfig)
 
@@ -416,8 +392,8 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 		prc.PeerType = "Orderer"
 		prc.ChannelId = channelName
 		prc.PeerId = v.GetEndpoint()[0].Host
-		savePeer(p)
-		savePeerChannelRef(prc)
+		service.SavePeer(p)
+		service.SavePeerChannelRef(prc)
 	}
 	//fmt.Println(chlConfig.Orderers)
 	//jsonBytes, _ := json.MarshalIndent(chlConfig, "", "\t")
@@ -442,8 +418,8 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 		prc.ChannelId = channelName
 		prc.PeerType = "PEER"
 		prc.CreateAt = time.Now()
-		savePeer(p)
-		savePeerChannelRef(prc)
+		service.SavePeer(p)
+		service.SavePeerChannelRef(prc)
 		var j int
 		var prcc model.PeerRefChaincode
 		for j = 0 ; j < len(cqi.Chaincodes);j++{
@@ -458,8 +434,8 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 			prcc.CCVersion = cqi.Chaincodes[j].Version
 			prcc.ChaincodeId = cqi.Chaincodes[j].Name
 			prcc.PeerId = strings.Split(peers[i].AliveMessage.GetAliveMsg().Membership.Endpoint,":")[0]
-			saveChaincode(cc)
-			saveChaincodPeerRef(prcc)
+			service.SaveChaincode(cc)
+			service.SaveChaincodPeerRef(prcc)
 		}
 
 	}
@@ -477,7 +453,7 @@ func (r response) Raw() *discoverypb.Response {
 
 func discoveryRaw(){
 	server := "peer0.org1.example.com:7051"
-	conf,err := ConfigFromFile("config/discovery_config.yaml")
+	conf,err := cmdcommon.ConfigFromFile("config/discovery_config.yaml")
 
 	client, err := comm.NewClient(conf.TLSConfig)
 

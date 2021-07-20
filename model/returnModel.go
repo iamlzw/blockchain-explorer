@@ -42,3 +42,21 @@ type GetBlockAndTxListResultModel struct {
 	CreateAt   time.Time
 	TxHash string
 }
+
+type GetChainsInfoResultModel struct {
+	Id int64
+	ChannelName string
+	Blocks int64
+	ChannelGenesisHash string
+	Trans int64
+	CreateAt time.Time
+	ChannelHash string
+}
+
+type GetChannelRefPeersResultModel struct{
+	Id int64
+	CreateAt time.Time
+	PeerId string
+	ChannelId string
+	PeerType string
+}
