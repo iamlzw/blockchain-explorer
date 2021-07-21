@@ -53,20 +53,20 @@ func GetBlockActivityList(c *gin.Context){
 	c.Data(200,"json",blksBytes)
 }
 
-func GetTxList(c *gin.Context){
-	channelGenesisHash := c.GetString("channelGenesisHash")
-	blockNum := c.GetInt64("blocknum")
-	txId := c.GetString("txId")
-	from := c.GetTime("from")
-	to := c.GetTime("to")
-	organizations := c.GetString("organizations")
-	txInfos,err := service.GetTxList(channelGenesisHash,blockNum,txId,from,to,organizations)
-	//txInfosByte,err := json.Marshal(txInfos)
-	if err != nil {
-		c.Data(500,"json",[]byte("获取交易信息失败"))
-	}
-	c.JSON(200,txInfos)
-}
+//func GetTxList(c *gin.Context){
+//	channelGenesisHash := c.GetString("channelGenesisHash")
+//	blockNum := c.GetInt64("blocknum")
+//	txId := c.GetString("txId")
+//	from := c.GetTime("from")
+//	to := c.GetTime("to")
+//	organizations := c.GetString("organizations")
+//	txInfos,err := service.GetTxList(channelGenesisHash,blockNum,txId,from,to,organizations)
+//	//txInfosByte,err := json.Marshal(txInfos)
+//	if err != nil {
+//		c.Data(500,"json",[]byte("获取交易信息失败"))
+//	}
+//	c.JSON(200,txInfos)
+//}
 
 func GetBaseInfos(c * gin.Context){
 	m := make(map[string]interface{})
@@ -151,6 +151,39 @@ func GetBlockAndTxList(c *gin.Context){
 	blockAndTxList := service.GetBlockAndTxListByPage(channelGenesisHash,startTime,endTime,orgs,pageSize2Int,offset)
 	c.JSON(200,blockAndTxList)
 
+}
+
+func GetTxListByPage(c *gin.Context){
+	channelGenesisHash := c.PostForm("channelGenesisHash")
+	blockNum := c.PostForm("blocknum")
+	blockNum_int,_ := strconv.Atoi(blockNum)
+	from := c.PostForm("from")
+	from_int,_ := strconv.ParseInt(from, 10, 64)
+	//fmt.Println(from)
+	startTime :=time.Unix(from_int/1000,0)
+	fmt.Println(startTime)   //打印结果：2017-04-11 13:30:39
+	to := c.PostForm("to")
+	to_int,_ := strconv.ParseInt(to, 10, 64)
+	fmt.Println(to)
+	endTime := time.Unix(to_int/1000,0)
+	fmt.Println(endTime)
+	orgs := c.PostForm("orgs")
+	orgsarray := strings.Split(orgs,",")
+	os := ""
+	for i, org := range orgsarray{
+		if i == len(orgsarray) - 1 {
+			os += "'" + org + "'"
+		}else {
+			os += "'" + org + "',"
+		}
+	}
+	currentPage := c.PostForm("current")
+	pageSize := c.PostForm("pageSize")
+	currentPage2Int,_ := strconv.Atoi(currentPage)
+	pageSize2Int,_ := strconv.Atoi(pageSize)
+	offset := (currentPage2Int - 1)  * pageSize2Int
+	blockAndTxList, _ := service.GetTxListByPage(channelGenesisHash, int64(blockNum_int),"",startTime,endTime,orgs,pageSize2Int,offset)
+	c.JSON(200,blockAndTxList)
 }
 
 

@@ -22,5 +22,6 @@ func InitRouter() *gin.Engine {
 	r.GET("/network/ledger",controller.GetCurBlockNum)
 	//GetBlockAndTxList
 	r.POST("/block/block",controller.GetBlockAndTxList)
+	r.POST("/tx/txlist",controller.GetTxListByPage)
 	return r
 }

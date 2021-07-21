@@ -98,6 +98,27 @@ func GetTxList(channelGenesisHash string , blockNum int64, txId string , from ti
 	}
 	return txListResultModels,nil
 }
+func GetTxListByPage(channelGenesisHash string , blockNum int64, txId string , from time.Time, to time.Time, organizations string,limit int,offset int) ([]model.GetTxListResultModel,error){
+	txListSql := ""
+	if len(organizations) != 0 {
+		txListSql = "and t.creator_msp_id in ("+"'"+organizations+"')"
+	}
+	queryText := `select t.creator_msp_id,t.txhash,t.type,t.chaincodename,t.createdt,channel.name as channelName from transactions as t
+       inner join channel on t.channel_genesis_hash=channel.channel_genesis_hash where 
+       t.channel_genesis_hash = $1 `+txListSql+` and t.createdt between $2 and $3  order by  t.id desc limit $4 offset $5;`
+	rows ,err:= db.Query(queryText, channelGenesisHash,from,to,limit,offset)
+	common.CheckErr(err)
+	var txListResultModels []model.GetTxListResultModel
+	for rows.Next() {
+		var tx model.GetTxListResultModel
+		if err := rows.Scan(&tx.CreatorMspId,&tx.TxHash,&tx.Type,&tx.ChaincodeName,&tx.CreateAt,&tx.ChannelName); err != nil {
+			//log.Fatal(err)
+			return nil,err
+		}
+		txListResultModels = append(txListResultModels,tx)
+	}
+	return txListResultModels,nil
+}
 
 func GetBlockAndTxList(channelGenesisHash string, from time.Time, to time.Time, organizations string) []model.GetBlockAndTxListResultModel{
 	blockAndTxList := ""
@@ -141,7 +162,7 @@ func GetBlockAndTxListByPage(channelGenesisHash string, from time.Time, to time.
 	var blockAndTxs []model.GetBlockAndTxListResultModel
 	for rows.Next() {
 		var blockAndTx model.GetBlockAndTxListResultModel
-		if err := rows.Scan(&blockAndTx.ChannelName,&blockAndTx.BlockNum,&blockAndTx.TxHash,&blockAndTx.DataHash,&blockAndTx.BlockHash,&blockAndTx.PreHash,&blockAndTx.CreateAt,&blockAndTx.TxHash); err != nil {
+		if err := rows.Scan(&blockAndTx.ChannelName,&blockAndTx.BlockNum,&blockAndTx.TxCount,&blockAndTx.DataHash,&blockAndTx.BlockHash,&blockAndTx.PreHash,&blockAndTx.CreateAt,&blockAndTx.TxHash); err != nil {
 			log.Fatal(err)
 		}
 		blockAndTxs = append(blockAndTxs,blockAndTx)
