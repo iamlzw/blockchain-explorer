@@ -2,6 +2,7 @@ package service
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/lifegoeson/blockchain-explorer/common"
 	"github.com/lifegoeson/blockchain-explorer/model"
 	"log"
@@ -111,6 +112,31 @@ func GetBlockAndTxList(channelGenesisHash string, from time.Time, to time.Time, 
          blocks.channel_genesis_hash =$1 and blocknum >= 0 and blocks.createdt between $2 and $3
          order by blocks.blocknum desc)  a where  a.txhash IS NOT NULL;`
 	rows,err := db.Query(queryText, channelGenesisHash,from,to)
+	common.CheckErr(err)
+	var blockAndTxs []model.GetBlockAndTxListResultModel
+	for rows.Next() {
+		var blockAndTx model.GetBlockAndTxListResultModel
+		if err := rows.Scan(&blockAndTx.ChannelName,&blockAndTx.BlockNum,&blockAndTx.TxHash,&blockAndTx.DataHash,&blockAndTx.BlockHash,&blockAndTx.PreHash,&blockAndTx.CreateAt,&blockAndTx.TxHash); err != nil {
+			log.Fatal(err)
+		}
+		blockAndTxs = append(blockAndTxs,blockAndTx)
+	}
+	return blockAndTxs
+}
+func GetBlockAndTxListByPage(channelGenesisHash string, from time.Time, to time.Time, organizations string,limit int,offset int) []model.GetBlockAndTxListResultModel{
+	blockAndTxList := ""
+	if organizations != "" {
+		blockAndTxList = "and t.creator_msp_id in ("+"'"+organizations+"')"
+	}
+	queryText := `select a.* from  (
+      select (select c.name from channel c where c.channel_genesis_hash =
+         $1 ) as channelname, blocks.blocknum,blocks.txcount ,blocks.datahash ,blocks.blockhash ,blocks.prehash,blocks.createdt,(
+        SELECT  array_agg(txhash) as txhash FROM transactions t where blockid = blocks.blocknum `+blockAndTxList+` and
+         channel_genesis_hash = $1 and createdt between $2 and $3) from blocks where
+         blocks.channel_genesis_hash =$1 and blocknum >= 0 and blocks.createdt between $2 and $3
+         order by blocks.blocknum desc limit $4 offset $5 )  a where  a.txhash IS NOT NULL LIMIT $4 OFFSET $5;`
+	rows,err := db.Query(queryText, channelGenesisHash,from,to,limit,offset)
+	fmt.Println(blockAndTxList)
 	common.CheckErr(err)
 	var blockAndTxs []model.GetBlockAndTxListResultModel
 	for rows.Next() {

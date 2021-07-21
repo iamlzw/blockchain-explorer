@@ -19,5 +19,8 @@ func InitRouter() *gin.Engine {
 	r.GET("/block/activity",controller.GetBlockActivityList)
 	r.GET("/base/infos",controller.GetBaseInfos)
 	r.GET("/base/peers",controller.GetPeerInfos)
+	r.GET("/network/ledger",controller.GetCurBlockNum)
+	//GetBlockAndTxList
+	r.POST("/block/block",controller.GetBlockAndTxList)
 	return r
 }

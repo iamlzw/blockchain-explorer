@@ -7,17 +7,19 @@ import (
 	"github.com/lifegoeson/blockchain-explorer/defaultclient"
 	"github.com/lifegoeson/blockchain-explorer/service"
 	"strconv"
+	"strings"
+	"time"
 )
 
-func GetCurBlockNum(c *gin.Context) {
-	curBlockNum := service.GetCurBlockNum(c.Query("channelGenesisHash"))
-	fmt.Println(curBlockNum)
-	chlByte,err := json.Marshal(curBlockNum)
-	if err != nil {
-		c.Data(500,"json",[]byte("获取当前区块号失败"))
-	}
-	c.Data(200,"json",chlByte)
-}
+//func GetCurBlockNum(c *gin.Context) {
+//	curBlockNum := service.GetCurBlockNum(c.Query("channelGenesisHash"))
+//	fmt.Println(curBlockNum)
+//	chlByte,err := json.Marshal(curBlockNum)
+//	if err != nil {
+//		c.Data(500,"json",[]byte("获取当前区块号失败"))
+//	}
+//	c.Data(200,"json",chlByte)
+//}
 
 func GetTxCountByBlockNum(c *gin.Context){
 	blocknum,err := strconv.Atoi(c.Query("blocknum"))
@@ -91,9 +93,64 @@ func GetBaseInfos(c * gin.Context){
 }
 
 func GetPeerInfos(c *gin.Context){
-	//channelGenesisHash := c.GetString("channelGenesisHash")
-	peerInfos:= service.GetPeerData(defaultclient.GetInstance().DefaultChannelGenHash)
-	c.JSON(200,peerInfos)
+	channelGenesisHash := c.Query("channelGenesisHash")
+	peerInfos:= service.GetPeerData(channelGenesisHash)
+	ledgerHeight := service.GetCurBlockNum(channelGenesisHash)
+	//p := make(map[string]interface{})
+	var ps []map[string]interface{}
+	for _,peer := range peerInfos {
+		m := make(map[string]interface{})
+		m["ChannelName"] = peer.ChannelName
+		m["Requests"] = peer.Requests
+		m["ChannelGenesisHash"] = peer.ChannelGenesisHash
+		m["ServerHostName"] = peer.ServerHostName
+		m["MSPId"] = peer.MSPId
+		m["PeerType"] = peer.PeerType
+		m["ledgerHeight"] = ledgerHeight
+		m["low"] = 0
+		m["Unsigned"] = true
+		ps = append(ps,m)
+	}
+	c.JSON(200,ps)
+}
+
+func GetCurBlockNum(c *gin.Context){
+	channelGenesisHash := c.Query("channelGenesisHash")
+	ledgerHeight := service.GetCurBlockNum(channelGenesisHash)
+	c.JSON(200,ledgerHeight)
+}
+
+func GetBlockAndTxList(c *gin.Context){
+	channelGenesisHash := c.PostForm("channelGenesisHash")
+	from := c.PostForm("from")
+	from_int,_ := strconv.ParseInt(from, 10, 64)
+	//fmt.Println(from)
+	startTime :=time.Unix(from_int/1000,0)
+	fmt.Println(startTime)   //打印结果：2017-04-11 13:30:39
+	to := c.PostForm("to")
+	to_int,_ := strconv.ParseInt(to, 10, 64)
+	fmt.Println(to)
+	endTime := time.Unix(to_int/1000,0)
+	fmt.Println(endTime)
+	orgs := c.PostForm("orgs")
+	orgsarray := strings.Split(orgs,",")
+	os := ""
+	for i, org := range orgsarray{
+		if i == len(orgsarray) - 1 {
+			os += "'" + org + "'"
+		}else {
+			os += "'" + org + "',"
+		}
+
+	}
+	currentPage := c.PostForm("current")
+	pageSize := c.PostForm("pageSize")
+	currentPage2Int,_ := strconv.Atoi(currentPage)
+	pageSize2Int,_ := strconv.Atoi(pageSize)
+	offset := (currentPage2Int - 1)  * pageSize2Int
+	blockAndTxList := service.GetBlockAndTxListByPage(channelGenesisHash,startTime,endTime,orgs,pageSize2Int,offset)
+	c.JSON(200,blockAndTxList)
+
 }
 
 
