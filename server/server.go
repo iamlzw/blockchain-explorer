@@ -23,5 +23,7 @@ func InitRouter() *gin.Engine {
 	//GetBlockAndTxList
 	r.POST("/block/block",controller.GetBlockAndTxList)
 	r.POST("/tx/txlist",controller.GetTxListByPage)
+	r.GET("/channel/info",controller.GetChannelInfo)
+	r.GET("/chaincode/info",controller.GetChaincodes)
 	return r
 }

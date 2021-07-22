@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/lifegoeson/blockchain-explorer/common"
 	"github.com/lifegoeson/blockchain-explorer/model"
+	//"github.com/lifegoeson/fabric-sdk-go/test/performance/pkg/client/channel"
 	"log"
 	"time"
 )
@@ -155,7 +156,7 @@ func GetBlockAndTxListByPage(channelGenesisHash string, from time.Time, to time.
         SELECT  array_agg(txhash) as txhash FROM transactions t where blockid = blocks.blocknum `+blockAndTxList+` and
          channel_genesis_hash = $1 and createdt between $2 and $3) from blocks where
          blocks.channel_genesis_hash =$1 and blocknum >= 0 and blocks.createdt between $2 and $3
-         order by blocks.blocknum desc limit $4 offset $5 )  a where  a.txhash IS NOT NULL LIMIT $4 OFFSET $5;`
+         order by blocks.blocknum desc)  a where  a.txhash IS NOT NULL LIMIT $4 OFFSET $5;`
 	rows,err := db.Query(queryText, channelGenesisHash,from,to,limit,offset)
 	fmt.Println(blockAndTxList)
 	common.CheckErr(err)
@@ -170,15 +171,16 @@ func GetBlockAndTxListByPage(channelGenesisHash string, from time.Time, to time.
 	return blockAndTxs
 }
 
-func GetChannelConfig(channelGenesisHash string) model.Channel{
+func GetChannelConfig(channelGenesisHash string) []model.Channel{
 	queryText := ` select * from channel where channel_genesis_hash = $1 `
-
 	row := db.QueryRow(queryText, channelGenesisHash)
 	var channel model.Channel
+	var chls []model.Channel
 	if err := row.Scan(&channel.Id,&channel.Name,&channel.Blocks,&channel.Trans,&channel.CreateAt,&channel.ChannelGenesisHash,&channel.ChannelHash,&channel.ChannelConfig,&channel.ChannelBlock,&channel.ChannelTx,&channel.ChannelVersion); err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
-	return channel
+	chls = append(chls,channel)
+	return chls
 }
 
 func GetChannel(channelName string, channelGenesisHash string) model.Channel{
@@ -557,6 +559,23 @@ func GetOrgsData(channelGenesisHash string) []string{
 		rs = append(rs,r)
 	}
 	return rs
+}
+
+func GetChaincodes(channelGenesisHash string) []model.Chaincode{
+	queryText := ` select * from chaincodes where channel_genesis_hash = $1 `
+	rows,err := db.Query(queryText, channelGenesisHash)
+	if err != nil {
+		fmt.Println(err)
+	}
+	var cc model.Chaincode
+	var ccs []model.Chaincode
+	for rows.Next() {
+		if err = rows.Scan(&cc.Id,&cc.Name,&cc.Version,&cc.Path,&cc.ChannelGenesisHash,&cc.TxCount,&cc.CreateAt); err != nil {
+			fmt.Println(err)
+		}
+		ccs = append(ccs,cc)
+	}
+	return ccs
 }
 
 

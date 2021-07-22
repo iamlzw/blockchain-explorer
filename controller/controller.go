@@ -186,5 +186,17 @@ func GetTxListByPage(c *gin.Context){
 	c.JSON(200,blockAndTxList)
 }
 
+func GetChannelInfo(c *gin.Context){
+	channelGenesisHash := c.Query("channelGenesisHash")
+	chl := service.GetChannelConfig(channelGenesisHash)
+	c.JSON(200,chl)
+}
+
+func GetChaincodes(c *gin.Context){
+	channelGenesisHash := c.Query("channelGenesisHash")
+	chl := service.GetChaincodes(channelGenesisHash)
+	c.JSON(200,chl)
+}
+
 
 
