@@ -246,7 +246,6 @@ func SaveTransaction(tx *model.Transaction) bool {
 	if count > 0 {
 		return false
 	}
-	//fmt.Println(tx)
 	//插入交易
 	insertText := `insert into transactions(blockid, txhash, createdt, chaincodename, status, creator_msp_id, endorser_msp_id, chaincode_id, type, read_set, write_set, channel_genesis_hash, validation_code, envelope_signature, payload_extension, creator_id_bytes, creator_nonce, chaincode_proposal_input, tx_response, payload_proposal_hash, endorser_id_bytes, endorser_signature) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`
 	result, err := db.Exec(insertText,tx.BlockId,tx.TxHash,tx.CreateAt,tx.ChaincodeName,tx.Status,tx.CreatorMspId,tx.EndorserMspId,tx.ChaincodeId,tx.Type,tx.ReadSet,tx.WriteSet,tx.ChannelGenesisHash,tx.ValidationCode,tx.EnvelopeSignature,tx.PayloadExtension,tx.CreatorIdBytes,tx.CreatorNonce,tx.ChaincodeProposalInput,tx.TxResponse,tx.PayloadProposalHash,tx.EndorserIdBytes,tx.EndorserSignature)
@@ -260,7 +259,6 @@ func SaveTransaction(tx *model.Transaction) bool {
 	result2, err := db.Exec(insertText2,tx.ChannelGenesisHash)
 	common.CheckErr(err)
 	if _,err = result2.RowsAffected() ; err != nil {
-		log.Fatal(err)
 		return false
 	}
 	//更新channel中的交易数量
@@ -268,7 +266,6 @@ func SaveTransaction(tx *model.Transaction) bool {
 	result3, err := db.Exec(insertText3,tx.ChannelGenesisHash)
 	common.CheckErr(err)
 	if _,err = result3.RowsAffected() ; err != nil {
-		log.Fatal(err)
 		return false
 	}
 	return true
@@ -561,6 +558,24 @@ func GetOrgsData(channelGenesisHash string) []string{
 	return rs
 }
 
+func GetTxByOrg(channelGenesisHash string) []model.GetTxCountByOrgResultModel{
+	queryText := `SELECT creator_msp_id as name,count(1) as value FROM transactions where channel_genesis_hash = $1 GROUP BY creator_msp_id`
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	var rs []model.GetTxCountByOrgResultModel
+	for rows.Next() {
+		var r model.GetTxCountByOrgResultModel
+		if err = rows.Scan(&r.Name,&r.Value); err != nil {
+			fmt.Println(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
+}
+
 func GetChaincodes(channelGenesisHash string) []model.Chaincode{
 	queryText := ` select * from chaincodes where channel_genesis_hash = $1 `
 	rows,err := db.Query(queryText, channelGenesisHash)
@@ -576,6 +591,161 @@ func GetChaincodes(channelGenesisHash string) []model.Chaincode{
 		ccs = append(ccs,cc)
 	}
 	return ccs
+}
+
+func GetTxByMonth(channelGenesisHash string,months int) []model.GetTxOrBlockByDateResultModel{
+	queryText := ` with months as (
+            select generate_series(
+              date_trunc('month', now()) - '6 month'::interval,
+              date_trunc('month', now()),
+              '1 month'::interval
+            ) as datetime
+          )
+
+          select
+            months.datetime,
+            count(createdt)
+          from months
+          left join TRANSACTIONS on date_trunc('month', TRANSACTIONS.createdt) =months.datetime  and channel_genesis_hash =$1
+          group by 1
+          order by 1 `
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	var rs []model.GetTxOrBlockByDateResultModel
+	for rows.Next() {
+		var r model.GetTxOrBlockByDateResultModel
+		if err = rows.Scan(&r.Time,&r.TxCount); err != nil {
+			fmt.Println(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
+}
+
+func GetBlockByHour(channelGenesisHash string,hour string) []model.GetTxOrBlockByDateResultModel{
+	queryText := ` with hours as (
+            select generate_series(
+              date_trunc('hour', now()) - '6 hour'::interval,
+              date_trunc('hour', now()),
+              '1 hour'::interval
+            ) as datetime
+          )
+          select
+            to_char(hours.datetime,'HH24'),
+            count(createdt)
+          from hours
+          left join BLOCKS on date_trunc('hour', BLOCKS.createdt) = hours.datetime and channel_genesis_hash =$1
+          group by 1
+          order by 1 `
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	var rs []model.GetTxOrBlockByDateResultModel
+	for rows.Next() {
+		var r model.GetTxOrBlockByDateResultModel
+		if err = rows.Scan(&r.Time,&r.TxCount); err != nil {
+			fmt.Println(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
+}
+func GetBlockByMin(channelGenesisHash string,min string) []model.GetTxOrBlockByDateResultModel{
+	queryText := ` with minutes as (
+            select generate_series(
+              date_trunc('min', now()) - '10 min'::interval,
+              date_trunc('min', now()),
+              '1 min'::interval
+            ) as datetime
+          )
+          select
+            to_char(minutes.datetime,'MI'),
+            count(createdt)
+          from minutes
+          left join BLOCKS on date_trunc('min', BLOCKS.createdt) = minutes.datetime and channel_genesis_hash =$1
+          group by 1
+          order by 1  `
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	var rs []model.GetTxOrBlockByDateResultModel
+	for rows.Next() {
+		var r model.GetTxOrBlockByDateResultModel
+		if err = rows.Scan(&r.Time,&r.TxCount); err != nil {
+			fmt.Println(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
+}
+func GetTxByHour(channelGenesisHash string,hour string) []model.GetTxOrBlockByDateResultModel{
+
+	queryText := ` with hours as (
+            select generate_series(
+              date_trunc('hour', now()) - '6 hour'::interval,
+              date_trunc('hour', now()),
+              '1 hour'::interval
+            ) as datetime
+          )
+          select
+            to_char(hours.datetime,'HH24'),
+            count(createdt)
+          from hours
+          left join TRANSACTIONS on date_trunc('hour', TRANSACTIONS.createdt) = hours.datetime and channel_genesis_hash =$1
+          group by 1
+          order by 1 `
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	var rs []model.GetTxOrBlockByDateResultModel
+	for rows.Next() {
+		var r model.GetTxOrBlockByDateResultModel
+		if err = rows.Scan(&r.Time,&r.TxCount); err != nil {
+			fmt.Println(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
+}
+func GetTxByMin(channelGenesisHash string,min string) []model.GetTxOrBlockByDateResultModel{
+
+	queryText := ` with minutes as (
+            select generate_series(
+              date_trunc('min', now()) - '10 min'::interval,
+              date_trunc('min', now()),
+              '1 min'::interval
+            ) as datetime
+          )
+          select
+            to_char(minutes.datetime,'MI'),
+            count(createdt)
+          from minutes
+          left join TRANSACTIONS on date_trunc('min', TRANSACTIONS.createdt) = minutes.datetime and channel_genesis_hash =$1
+          group by 1
+          order by 1 `
+	rows, err:= db.Query(queryText,channelGenesisHash)
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	var rs []model.GetTxOrBlockByDateResultModel
+	for rows.Next() {
+		var r model.GetTxOrBlockByDateResultModel
+		if err = rows.Scan(&r.Time,&r.TxCount); err != nil {
+			fmt.Println(err)
+		}
+		rs = append(rs,r)
+	}
+	return rs
 }
 
 

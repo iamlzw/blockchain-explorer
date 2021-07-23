@@ -152,7 +152,10 @@ func constructBlock(b *cb.Block,channelGenesisHash string){
 	env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
 	payload,err := utils.GetPayload(env)
 	chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
-	bb.CreateAt = chdr.Timestamp.AsTime()
+	x :=  chdr.Timestamp
+	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
+	//fmt.Println("SH : ", time.Now().In(cstSh).Format("2006-01-02 15:04:05"))
+	bb.CreateAt = time.Unix(int64(x.GetSeconds()), int64(x.GetNanos())).In(cstSh)
 	service.SaveBlock(bb)
 	txsfltr := getBlockMetaData(b)
 	for j := 0 ; j < len(b.Data.Data) ; j++{
@@ -169,7 +172,11 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 	tx.BlockId = blockId
 	//fmt.Println(blockId)
 	tx.TxHash = chdr.TxId
-	tx.CreateAt = chdr.Timestamp.AsTime()
+	x :=  chdr.Timestamp
+	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
+	//fmt.Println("SH : ", time.Now().In(cstSh).Format("2006-01-02 15:04:05"))
+	tx.CreateAt = time.Unix(int64(x.GetSeconds()), int64(x.GetNanos())).In(cstSh)
+	//tx.CreateAt = chdr.Timestamp.AsTime()
 	t, err := utils.GetTransaction(payload.Data)
 	if err != nil {
 		log.Fatal(err)
@@ -326,8 +333,6 @@ func queryGenesisBlock(sdk *fabsdk.FabricSDK) string{
 	output,err := asn1.Marshal(bHeader{Number: int64(block.Header.Number),PreviousHash: string(block.Header.GetPreviousHash()),DataHash: string(block.Header.DataHash)})
 	common.CheckErr(err)
 
-	//"2dfaf3fa74316ef1b0b476d5535de673ab2516cab93664237bdf3e441558cf6d"
-	//"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	return hex.EncodeToString(sha256.New().Sum(output))
 }
 

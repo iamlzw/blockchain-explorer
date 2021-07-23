@@ -82,3 +82,13 @@ type GetTxPerChaincodeGenerateResultModel struct {
 type GetOrgDataResultModel struct {
 
 }
+
+type GetTxCountByOrgResultModel struct {
+	Name string
+	Value int
+}
+
+type GetTxOrBlockByDateResultModel struct {
+	Time string
+	TxCount int
+}

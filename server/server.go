@@ -18,6 +18,7 @@ func InitRouter() *gin.Engine {
 	r.GET("/tx/info",controller.GetTransactionByID)
 	r.GET("/block/activity",controller.GetBlockActivityList)
 	r.GET("/base/infos",controller.GetBaseInfos)
+	r.GET("/base/channel",controller.GetBaseChannelInfo)
 	r.GET("/base/peers",controller.GetPeerInfos)
 	r.GET("/network/ledger",controller.GetCurBlockNum)
 	//GetBlockAndTxList
@@ -25,5 +26,8 @@ func InitRouter() *gin.Engine {
 	r.POST("/tx/txlist",controller.GetTxListByPage)
 	r.GET("/channel/info",controller.GetChannelInfo)
 	r.GET("/chaincode/info",controller.GetChaincodes)
+	r.GET("/tx/group",controller.GetTxCountGroup)
+	r.GET("/tx/month",controller.GetTxCountByMonth)
+	r.GET("/tx/line",controller.GetTxOrBlockCountByTime)
 	return r
 }

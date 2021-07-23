@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/lifegoeson/blockchain-explorer/defaultclient"
+	"github.com/lifegoeson/blockchain-explorer/model"
 	"github.com/lifegoeson/blockchain-explorer/service"
 	"strconv"
 	"strings"
@@ -53,6 +54,18 @@ func GetBlockActivityList(c *gin.Context){
 	c.Data(200,"json",blksBytes)
 }
 
+func GetBaseChannelInfo(c *gin.Context){
+	m := make(map[string]interface{})
+	chls := service.GetChannelsInfo(defaultclient.GetInstance().DefaultServerName)
+	for _, chl := range chls{
+		if chl.ChannelGenesisHash == defaultclient.GetInstance().DefaultChannelGenHash {
+			m["defaultchannel"] = chl
+		}
+	}
+	m["chls"] = chls
+	c.JSON(200,m)
+}
+
 //func GetTxList(c *gin.Context){
 //	channelGenesisHash := c.GetString("channelGenesisHash")
 //	blockNum := c.GetInt64("blocknum")
@@ -69,27 +82,28 @@ func GetBlockActivityList(c *gin.Context){
 //}
 
 func GetBaseInfos(c * gin.Context){
+	channelGenesisHash := c.Query("channelGenesisHash")
 	m := make(map[string]interface{})
-	//获取通道信息
-	chls := service.GetChannelsInfo(defaultclient.GetInstance().DefaultServerName)
-	peerInfos:= service.GetPeerData(defaultclient.GetInstance().DefaultChannelGenHash)
-	ccs := service.GetChaincodeCount(defaultclient.GetInstance().DefaultChannelGenHash)
-	txCount := service.GetTxCount(defaultclient.GetInstance().DefaultChannelGenHash)
-	blkActivity := service.GetBlockActivityList(defaultclient.GetInstance().DefaultChannelGenHash)
-	blkCount := service.GetBlockCount(defaultclient.GetInstance().DefaultChannelGenHash)
-
-	for _, chl := range chls{
-		if chl.ChannelGenesisHash == defaultclient.GetInstance().DefaultChannelGenHash {
-			m["defaultchannel"] = chl
-		}
-	}
-	m["chls"] = chls
+	peerInfos:= service.GetPeerData(channelGenesisHash)
+	ccs := service.GetChaincodeCount(channelGenesisHash)
+	txCount := service.GetTxCount(channelGenesisHash)
+	blkActivity := service.GetBlockActivityList(channelGenesisHash)
+	blkCount := service.GetBlockCount(channelGenesisHash)
+	txgroup := service.GetTxByOrg(channelGenesisHash)
 	m["peers"] = peerInfos
 	m["ccs"] = ccs
 	m["txCount"] = txCount
 	m["blkActivity"] = blkActivity
 	m["blkCount"] = blkCount
+	jsonByte,_ := json.Marshal(txgroup)
+	m["txgroup"] = jsonByte
 	c.JSON(200,m)
+}
+
+func GetTxCountGroup(c * gin.Context){
+	channelGenesisHash := c.Query("channelGenesisHash")
+	txgroup := service.GetTxByOrg(channelGenesisHash)
+	c.JSON(200,txgroup)
 }
 
 func GetPeerInfos(c *gin.Context){
@@ -196,6 +210,36 @@ func GetChaincodes(c *gin.Context){
 	channelGenesisHash := c.Query("channelGenesisHash")
 	chl := service.GetChaincodes(channelGenesisHash)
 	c.JSON(200,chl)
+}
+
+func GetTxCountByMonth(c *gin.Context){
+	channelGenesisHash := c.Query("channelGenesisHash")
+	month := c.Query("channelGenesisHash")
+	month2Int,err := strconv.Atoi(month)
+	if err != nil  {
+		fmt.Println(err)
+	}
+	txData := service.GetTxByMonth(channelGenesisHash,month2Int)
+	c.JSON(200,txData)
+}
+
+func GetTxOrBlockCountByTime(c *gin.Context){
+	channelGenesisHash := c.Query("channelGenesisHash")
+	queryType := c.Query("queryType")
+	t := ""
+	timeType := c.Query("timeType")
+	fmt.Println(queryType,channelGenesisHash,timeType)
+	var data []model.GetTxOrBlockByDateResultModel
+	if queryType == "block" && timeType == "hour"{
+		data = service.GetBlockByHour(channelGenesisHash,t)
+	} else if queryType == "block" && timeType == "min" {
+		data = service.GetBlockByMin(channelGenesisHash,t)
+	} else if queryType == "tx" && timeType == "hour" {
+		data = service.GetTxByHour(channelGenesisHash,t)
+	} else {
+		data = service.GetTxByMin(channelGenesisHash,t)
+	}
+	c.JSON(200,data)
 }
 
 
