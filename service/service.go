@@ -355,14 +355,20 @@ func SaveChannel(channel model.Channel) bool {
 		}
 		return true
 	}
-	insertText := `update channel set blocks = $1 ,trans = $2,channel_hash=$3 where name=$4 and channel_genesis_hash=$5`
-	result, err := db.Exec(insertText,channel.Blocks,channel.Trans,channel.ChannelHash,channel.Name,channel.ChannelGenesisHash)
-	common.CheckErr(err)
-	if _,err = result.RowsAffected() ; err != nil {
-		log.Fatal(err)
-		return false
-	}
+
 	return true
+	//else {
+	//	//这里有一个问题,每次重新启动服务，会更新blocks以及trans为0,但是由于block与交易的保存机制，channel中的blocks以及trans不会更新
+	//	insertText := `update channel set blocks = $1 ,trans = $2,channel_hash=$3 where name=$4 and channel_genesis_hash=$5`
+	//	result, err := db.Exec(insertText,channel.Blocks,channel.Trans,channel.ChannelHash,channel.Name,channel.ChannelGenesisHash)
+	//	common.CheckErr(err)
+	//	if _,err = result.RowsAffected() ; err != nil {
+	//		log.Fatal(err)
+	//		return false
+	//	}
+	//	return true
+	//}
+
 
 }
 
