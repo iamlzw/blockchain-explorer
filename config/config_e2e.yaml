@@ -6,13 +6,23 @@ client:
     level: info
   # Root of the MSP directories with keys and certs.
   cryptoconfig:
-    path: E:\workspace\go\src\github.com\lifegoeson\blockchain-explorer\crypto-config
+    path: D:\workspace\go\src\github.com\lifegoeson\blockchain-explorer\crypto-config
   credentialStore:
     path: "/tmp/state-store"
     cryptoStore:
       path: /tmp/msp
 
 channels:
+  channel2:
+    peers:
+      peer0.org1.example.com:
+        endorsingPeer: true
+
+        chaincodeQuery: true
+
+        ledgerQuery: true
+
+        eventSource: true
   mychannel:
     peers:
       peer0.org1.example.com:
@@ -27,12 +37,12 @@ channels:
 organizations:
   Org1:
     mspid: Org1MSP
-    cryptoPath:  peerOrganizations\org1.example.com\users\{username}@org1.example.com\msp
+    cryptoPath: peerOrganizations\org1.example.com\users\{username}@org1.example.com\msp
     peers:
       - peer0.org1.example.com
 peers:
   peer0.org1.example.com:
-    url: grpcs://192.168.126.128:7051
+    url: grpcs://114.115.204.233:7051
 
     grpcOptions:
       ssl-target-name-override: peer0.org1.example.com
@@ -42,11 +52,11 @@ peers:
       fail-fast: false
       allow-insecure: false
     tlsCACerts:
-      path: E:\workspace\go\src\github.com\lifegoeson\blockchain-explorer\crypto-config\peerOrganizations\org1.example.com\tlsca\tlsca.org1.example.com-cert.pem
+      path: D:\workspace\go\src\github.com\lifegoeson\blockchain-explorer\crypto-config\peerOrganizations\org1.example.com\tlsca\tlsca.org1.example.com-cert.pem
 
 entityMatchers:
   peer:
     - pattern: (\w+).org1.example.(\w+)
-      urlSubstitutionExp: grpcs://192.168.126.128:7051
+      urlSubstitutionExp: grpcs://114.115.204.233:7051
       sslTargetOverrideUrlSubstitutionExp: peer0.org1.example.com
       mappedHost: peer0.org1.example.com

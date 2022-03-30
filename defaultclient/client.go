@@ -25,7 +25,7 @@ type defaultclient struct {
 	DefaultResmgmt    *resmgmt.Client
 	DefaultCCP        context.ChannelProvider
 	DefaultChannelGenHash string
-	DefautlMSPId string
+	DefaultMSPId string
 }
 
 var instance *defaultclient

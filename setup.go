@@ -1,20 +1,18 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/asn1"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric/common/tools/protolator"
+	"github.com/hyperledger/fabric/core/chaincode/platforms"
+	"github.com/hyperledger/fabric/core/chaincode/platforms/car"
+	"github.com/hyperledger/fabric/core/chaincode/platforms/golang"
+	"github.com/hyperledger/fabric/core/chaincode/platforms/java"
+	"github.com/hyperledger/fabric/core/chaincode/platforms/node"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	ledgerUtil "github.com/hyperledger/fabric/core/ledger/util"
-	"github.com/spf13/viper"
 	//"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/event"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
@@ -25,8 +23,8 @@ import (
 	fabImpl "github.com/hyperledger/fabric-sdk-go/pkg/fab"
 	"github.com/hyperledger/fabric-sdk-go/pkg/fab/peer"
 	"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
-	"github.com/hyperledger/fabric/cmd/common/comm"
 	cmdcommon "github.com/hyperledger/fabric/cmd/common"
+	"github.com/hyperledger/fabric/cmd/common/comm"
 	"github.com/hyperledger/fabric/cmd/common/signer"
 	_ "github.com/hyperledger/fabric/cmd/common/signer"
 	discovery "github.com/hyperledger/fabric/discovery/client"
@@ -43,47 +41,60 @@ import (
 	"github.com/lifegoeson/blockchain-explorer/defaultclient"
 	"github.com/lifegoeson/blockchain-explorer/model"
 	"github.com/lifegoeson/blockchain-explorer/service"
-	"io"
-	"io/ioutil"
 	"log"
-	"os"
 	"time"
-
-	//"github.com/hyperledger/fabric/protos/utils"
 )
-const (
-	orgName = "Org1"
-	orgUser = "User1"
-	orgAdmin = "Admin"
-	peerUrl = "grpcs://192.168.126.128:7051"
-	serverName = "peer0.org1.example.com"
-	channelName = "mychannel"
-	tlscapath = "E:\\workspace\\go\\src\\github.com\\lifegoeson\\blockchain-explorer\\crypto-config\\peerOrganizations\\org1.example.com\\tlsca\\tlsca.org1.example.com-cert.pem"
-	)
+//type Client struct {
+//	ctx       ccpcontext.Channel
+//	filter    fab.TargetFilter
+//	ledger    *channel.Ledger
+//	verifier  channel.ResponseVerifier
+//	discovery fab.DiscoveryService
+//}
 func initChannels(){
 	orgResMgmt := defaultclient.GetInstance().DefaultResmgmt
-	sdk := defaultclient.GetInstance().DefaultFabSdk
+	//sdk := defaultclient.GetInstance().DefaultFabSdk
 
-	configBackend, err := configImpl.FromFile("config/config_e2e.yaml")()
+	config := configImpl.FromFile("config/config_e2e.yaml")
+	configBackend , err := config()
+
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	cfg, err := fabImpl.ConfigFromBackend(configBackend...)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
-	p,err  := peer.New(cfg,peer.WithURL(peerUrl),peer.WithTLSCert(loadCertificate(tlscapath)),peer.WithServerName(serverName))
+	p,err  := peer.New(cfg,peer.WithURL(cfg.NetworkPeers()[0].URL),peer.WithTLSCert(cfg.NetworkPeers()[0].TLSCACert))
 	chlInfos,err := orgResMgmt.QueryChannels(resmgmt.WithTargets(p))
-	common.CheckErr(err)
+	//p.ProcessTransactionProposal()
+
+	if err != nil {
+		log.Println(err)
+	}
 	chls := chlInfos.Channels
+
+	sdk, err := fabsdk.New(config)
+	if err != nil {
+		log.Println(err)
+	}
 	var i int
 	for i = 0 ; i < len(chls) ; i++ {
 		chlName := chls[i].ChannelId
-		ccp := sdk.ChannelContext(chlName, fabsdk.WithUser(orgUser),fabsdk.WithOrg(orgName))
+		ccp := sdk.ChannelContext(chlName, fabsdk.WithUser(defaultclient.GetInstance().DefaultOrgUser),fabsdk.WithOrg(defaultclient.GetInstance().DefaultOrg))
 		ledgerClient, err := ledger.New(ccp)
-		common.CheckErr(err)
+		if err != nil {
+			log.Println(err)
+		}
+
+		//ledgerclient := (*Client)(unsafe.Pointer(ledgerClient))
+		//peers, _ := ledgerclient.discovery.GetPeers()
+		//fmt.Println(peers[0].URL())
+
 		block ,err := ledgerClient.QueryBlock(0)
+		//var client interface{}
+
 		if err != nil{
 			fmt.Println(err)
 		}
@@ -101,9 +112,12 @@ func initChannels(){
 		}
 		service.SaveChannel(chl)
 		constructBlock(block,channelGenesisHash)
-		discoveryFunc(sdk,channelName,channelGenesisHash,orgResMgmt)
-		syncBlocks(sdk,channelName,channelGenesisHash)
+		discoveryNetwork(sdk,chlName,channelGenesisHash)
+		bc := make(chan *cb.Block,100)
+		go processBlockChannel(bc,channelGenesisHash)
+		go syncBlocks(sdk,chlName,channelGenesisHash,bc)
 		go listenBlockEvent(ccp,channelGenesisHash)
+		//go catchupBlocks(sdk,channelName,channelGenesisHash)
 	}
 }
 
@@ -116,29 +130,34 @@ func queryChaincodeInfo(sdk *fabsdk.FabricSDK,channelName string) *pb.ChaincodeQ
 	// Org resource management client
 	orgResMgmt, err := resmgmt.New(adminContext)
 	if err != nil {
-		fmt.Println("Failed to create new resource management client: %s", err)
+		log.Println(err)
 	}
-	common.CheckErr(err)
-	chaincodeInfo,err :=orgResMgmt.QueryInstantiatedChaincodes("mychannel")
+	chaincodeInfo,err :=orgResMgmt.QueryInstantiatedChaincodes(channelName)
 	return chaincodeInfo
 }
-
-func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string){
+//同步区块,仅在初始化channel时同步一次
+func syncBlocks(sdk *fabsdk.FabricSDK,chlName string,channelGenesisHash string,bc chan *cb.Block){
 	ccp := sdk.ChannelContext(chlName, fabsdk.WithUser("User1"),fabsdk.WithOrg("Org1"))
 	ledgerClient, err := ledger.New(ccp)
 	chainInfos,err := ledgerClient.QueryInfo()
+	if err != nil {
+		log.Println(err)
+	}
 	var b *cb.Block
 	//bb:= new(model.Block)
 	var i uint64
 	for i = 1 ; i < chainInfos.BCI.Height ; i++{
 		b ,err = ledgerClient.QueryBlock(i)
-		constructBlock(b,channelGenesisHash)
+		for i = 1 ; i < chainInfos.BCI.Height ; i++{
+			b ,err = ledgerClient.QueryBlock(i)
+			if err != nil {
+				log.Println(err)
+			}
+			bc <- b
+		}
 	}
-	if err!= nil {
-		log.Fatal(err)
-	}
-}
 
+}
 func constructBlock(b *cb.Block,channelGenesisHash string){
 	bb:= new(model.Block)
 	bb.BlockNum = int64(b.Header.Number)
@@ -150,19 +169,27 @@ func constructBlock(b *cb.Block,channelGenesisHash string){
 	//fmt.Println(b.Header.Bytes()
 	bb.BlockHash = hex.EncodeToString(b.Header.Hash())
 	env, err := utils.GetEnvelopeFromBlock(b.Data.Data[0])
+	if err != nil {
+		log.Println(err)
+	}
 	payload,err := utils.GetPayload(env)
+	if err != nil {
+		log.Println(err)
+	}
 	chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	if err != nil {
+		log.Println(err)
+	}
 	x :=  chdr.Timestamp
 	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
 	//fmt.Println("SH : ", time.Now().In(cstSh).Format("2006-01-02 15:04:05"))
 	bb.CreateAt = time.Unix(int64(x.GetSeconds()), int64(x.GetNanos())).In(cstSh)
-	service.SaveBlock(bb)
 	txsfltr := getBlockMetaData(b)
 	for j := 0 ; j < len(b.Data.Data) ; j++{
 		e, _ := utils.GetEnvelopeFromBlock(b.Data.Data[j])
 		syncTx(e,txsfltr,bb.BlockNum,channelGenesisHash,j,chdr.Extension,chdr.Type)
 	}
-	common.CheckErr(err)
+	service.SaveBlock(bb)
 }
 
 func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,channelGenesisHash string,txIndex int,payload_extension []byte,header_type int32){
@@ -171,7 +198,11 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 	chdr, _ := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
 	tx.BlockId = blockId
 	//fmt.Println(blockId)
-	tx.TxHash = chdr.TxId
+	if chdr.TxId == ""{
+		tx.TxHash = "nil"
+	}else {
+		tx.TxHash = chdr.TxId
+	}
 	x :=  chdr.Timestamp
 	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
 	//fmt.Println("SH : ", time.Now().In(cstSh).Format("2006-01-02 15:04:05"))
@@ -179,7 +210,7 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 	//tx.CreateAt = chdr.Timestamp.AsTime()
 	t, err := utils.GetTransaction(payload.Data)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 	sdr, err := utils.UnmarshalSignatureHeader(payload.Header.SignatureHeader)
 	var sId2 msp.SerializedIdentity
@@ -196,14 +227,18 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 	if header_type == int32(3) {
 		ccActionPayload, err := utils.GetChaincodeActionPayload(t.Actions[0].Payload)
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 		//ccActionHeader,err := utils.UnmarshalSignatureHeader(t.Actions[0].Header)
 		prp, err := utils.GetProposalResponsePayload(ccActionPayload.Action.ProposalResponsePayload)
+
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 		caPayload, err := utils.GetChaincodeAction(prp.Extension)
+		if err != nil {
+			log.Println(err)
+		}
 		tx.ChaincodeName = caPayload.ChaincodeId.Name
 		tx.Status = caPayload.Response.Status
 		tx.EndorserMspId = getMSPIdFromEndorsement(ccActionPayload.Action.Endorsements)
@@ -229,15 +264,54 @@ func syncTx(env *cb.Envelope,txsfltr ledgerUtil.TxValidationFlags,blockId int64,
 		cis := &pb.ChaincodeInvocationSpec{}
 		err = proto.Unmarshal(cpp.Input, cis)
 		args := cis.ChaincodeSpec.Input.Args
-		for k := 0; k < len(args);k++ {
-			if k == len(args) - 1  {
-				input += string(args[k])
-			}else {
-				input += string(args[k]) + ","
+		lsccFunc := string(args[0])
+		lsccArgs := args[1:]
+		if lsccFunc == "upgrade" || lsccFunc == "deploy" {
+
+			cds := &pb.ChaincodeDeploymentSpec{}
+			_ = proto.Unmarshal(lsccArgs[1], cds)
+
+			cdsArgs, _ := utils.GetChaincodeDeploymentSpec(lsccArgs[1], platforms.NewRegistry(
+				// XXX We should definitely _not_ have this external dependency in VSCC
+				// as adding a platform could cause non-determinism.  This is yet another
+				// reason why all of this custom LSCC validation at commit time has no
+				// long term hope of staying deterministic and needs to be removed.
+				&golang.Platform{},
+				&node.Platform{},
+				&java.Platform{},
+				&car.Platform{},
+			))
+
+			inputArgs := cdsArgs.ChaincodeSpec.Input.Args
+			input += lsccFunc + "," +cds.ChaincodeSpec.ChaincodeId.Name + ","
+
+			for k := 0; k < len(inputArgs);k++ {
+				if k == len(inputArgs) - 1  {
+					//fmt.Println(string(inputArgs[k]))
+					input += string(inputArgs[k])
+				}else {
+					//fmt.Println(string(inputArgs[k]))
+					input += string(inputArgs[k]) + ","
+				}
+			}
+
+			fmt.Println(input)
+		}else {
+			//fmt.Println(lsccArgs)
+			args := cis.ChaincodeSpec.Input.Args
+			for k := 0; k < len(args);k++ {
+				if k == len(args) - 1  {
+					//fmt.Println(string(args[k]))
+					input += string(args[k])
+				}else {
+					//fmt.Println(string(args[k]))
+					input += string(args[k]) + ","
+				}
 			}
 		}
 		tx.ChaincodeProposalInput = input
 		tx.TxResponse = ""
+
 	}else {
 		rset,err := json.Marshal([]byte(""))
 		if err != nil {
@@ -304,73 +378,74 @@ func getMSPIdFromEndorsement(endorsements []*pb.Endorsement) string {
 	return mspid
 }
 
-func blockFromProto2Struct(b *cb.Block) *viper.Viper{
-	buf := new (bytes.Buffer)
-	err := protolator.DeepMarshalJSON(buf, b)
-	//err = protolator.DeepMarshalJSON(os.Stdout, b)
-	v := viper.New()
-	v.SetConfigType("json")
-	_ = v.MergeConfig(buf)
-	common.CheckErr(err)
-	return v
-}
+//func blockFromProto2Struct(b *cb.Block) *viper.Viper{
+//	buf := new (bytes.Buffer)
+//	err := protolator.DeepMarshalJSON(buf, b)
+//	//err = protolator.DeepMarshalJSON(os.Stdout, b)
+//	v := viper.New()
+//	v.SetConfigType("json")
+//	_ = v.MergeConfig(buf)
+//	common.CheckErr(err)
+//	return v
+//}
 
-type bHeader struct {
-	Number int64
-	PreviousHash string
-	DataHash string
-}
+//type bHeader struct {
+//	Number int64
+//	PreviousHash string
+//	DataHash string
+//}
 
-func queryGenesisBlock(sdk *fabsdk.FabricSDK) string{
-	ccp := sdk.ChannelContext(channelName, fabsdk.WithUser("User1"),fabsdk.WithOrg("Org1"))
-	ledgerClient, err := ledger.New(ccp)
-	common.CheckErr(err)
-	block ,err := ledgerClient.QueryBlock(0)
-	if err != nil{
-		fmt.Println(err)
+
+func listenBlockEvent(ccp ccpcontext.ChannelProvider,channelGenesisHash string){
+	ec,err := event.New(ccp,event.WithBlockEvents())
+
+	if err !=nil {
+		log.Printf("init event client error %s\n", err)
 	}
 
-	output,err := asn1.Marshal(bHeader{Number: int64(block.Header.Number),PreviousHash: string(block.Header.GetPreviousHash()),DataHash: string(block.Header.DataHash)})
-	common.CheckErr(err)
+	reg, notifier, err :=ec.RegisterBlockEvent()
 
-	return hex.EncodeToString(sha256.New().Sum(output))
-}
-
-func loadCertificate(path string) *x509.Certificate{
-	cf, e := ioutil.ReadFile(path)
-	if e != nil {
-		fmt.Println("cfload:", e.Error())
-		os.Exit(1)
+	if err != nil {
+		log.Printf("Failed to register block event: %s", err)
 	}
-	cpb, _ := pem.Decode(cf)
-	crt, e := x509.ParseCertificate(cpb.Bytes)
+	defer ec.Unregister(reg)
 
-	if e != nil {
-		fmt.Println("parsex509:", e.Error())
-		os.Exit(1)
+	var bEvent *fab.BlockEvent
+
+	for  {
+		select {
+		case bEvent = <-notifier:
+			b := bEvent.Block
+			constructBlock(b,channelGenesisHash)
+		}
 	}
-
-	return crt
 }
 
-const defaultTimeout = time.Second * 5
-type ConfigResponseParser struct {
-	io.Writer
+func processBlockChannel(bc chan  *cb.Block,channelGenesisHash string){
+	var b *cb.Block
+	for  {
+		select {
+		case b = <-bc:
+			constructBlock(b,channelGenesisHash)
+		}
+	}
 }
 
-func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash string,orgResMgmt *resmgmt.Client){
+func discoveryNetwork(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash string){
 	const (
 		server             = "peer0.org1.example.com:7051"
 		discoveryConfigPath = "config/discovery_config.yaml"
 	)
 	conf,err := cmdcommon.ConfigFromFile(discoveryConfigPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	client, err := comm.NewClient(conf.TLSConfig)
 
 	siger, err := signer.NewSigner(conf.SignerConfig)
-	timeout, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	timeout, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-
 
 	disc := discovery.NewClient(client.NewDialer(server), siger.Sign, 0)
 	req := discovery.NewRequest()
@@ -383,24 +458,26 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 	})
 
 	var chlConfig *discoverypb.ConfigResult
-	chlConfig, err = resp.ForChannel("mychannel").Config()
+	chlConfig, err = resp.ForChannel(channelName).Config()
 	orderers := chlConfig.Orderers
 	var p model.Peer
 	var prc model.PeerRefChannel
 	for k,v := range orderers{
 		p.ChannelGenesisHash = channelGenesisHash
 		p.CreateAt = time.Now()
-		p.ServerHostName = v.GetEndpoint()[0].Host
-		p.PeerType = "Orderer"
-		p.MspId = k
-		p.Requests = "grpcs://"+v.GetEndpoint()[0].Host+":"+ strconv.Itoa(int(v.GetEndpoint()[0].Port))
-		p.Org = 0
-		prc.CreateAt = time.Now()
-		prc.PeerType = "Orderer"
-		prc.ChannelId = channelGenesisHash
-		prc.PeerId = v.GetEndpoint()[0].Host
-		service.SavePeer(p)
-		service.SavePeerChannelRef(prc)
+		for i := 0 ; i < len(v.GetEndpoint()) ; i++{
+			p.ServerHostName = v.GetEndpoint()[i].Host
+			p.PeerType = "Orderer"
+			p.MspId = k
+			p.Requests = "grpcs://"+v.GetEndpoint()[i].Host+":"+ strconv.Itoa(int(v.GetEndpoint()[i].Port))
+			p.Org = 0
+			prc.CreateAt = time.Now()
+			prc.PeerType = "Orderer"
+			prc.ChannelId = channelGenesisHash
+			prc.PeerId = v.GetEndpoint()[i].Host
+			service.SavePeer(p)
+			service.SavePeerChannelRef(prc)
+		}
 	}
 	//fmt.Println(chlConfig.Orderers)
 	//jsonBytes, _ := json.MarshalIndent(chlConfig, "", "\t")
@@ -408,7 +485,7 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 
 	//fmt.Println(resp)
 	var peers []*discovery.Peer
-	peers,err  = resp.ForChannel("mychannel").Peers()
+	peers,err  = resp.ForChannel(channelName).Peers()
 	cqi := queryChaincodeInfo(sdk,channelName)
 	var cc model.Chaincode
 	fmt.Println(len(peers))
@@ -449,68 +526,81 @@ func discoveryFunc(sdk *fabsdk.FabricSDK,channelName string,channelGenesisHash s
 	common.CheckErr(err)
 }
 
-type response struct {
-	raw *discoverypb.Response
-	discovery.Response
-}
+//func queryGenesisBlock(sdk *fabsdk.FabricSDK) string{
+//	ccp := sdk.ChannelContext(channelName, fabsdk.WithUser("User1"),fabsdk.WithOrg("Org1"))
+//	ledgerClient, err := ledger.New(ccp)
+//	common.CheckErr(err)
+//	block ,err := ledgerClient.QueryBlock(0)
+//	if err != nil{
+//		fmt.Println(err)
+//	}
+//
+//	output,err := asn1.Marshal(bHeader{Number: int64(block.Header.Number),PreviousHash: string(block.Header.GetPreviousHash()),DataHash: string(block.Header.DataHash)})
+//	common.CheckErr(err)
+//
+//	return hex.EncodeToString(sha256.New().Sum(output))
+//}
 
-func (r response) Raw() *discoverypb.Response {
-		return r.raw
-}
+//func loadCertificate(path string) *x509.Certificate{
+//	cf, e := ioutil.ReadFile(path)
+//	if e != nil {
+//		fmt.Println("cfload:", e.Error())
+//		os.Exit(1)
+//	}
+//	cpb, _ := pem.Decode(cf)
+//	crt, e := x509.ParseCertificate(cpb.Bytes)
+//
+//	if e != nil {
+//		fmt.Println("parsex509:", e.Error())
+//		os.Exit(1)
+//	}
+//
+//	return crt
+//}
 
-func discoveryRaw(){
-	server := "peer0.org1.example.com:7051"
-	conf,err := cmdcommon.ConfigFromFile("config/discovery_config.yaml")
+//const defaultTimeout = time.Second * 5
+//type ConfigResponseParser struct {
+//	io.Writer
+//}
 
-	client, err := comm.NewClient(conf.TLSConfig)
+//
+//type response struct {
+//	raw *discoverypb.Response
+//	discovery.Response
+//}
+//
+//func (r response) Raw() *discoverypb.Response {
+//		return r.raw
+//}
 
-	siger, err := signer.NewSigner(conf.SignerConfig)
-	timeout, cancel := context.WithTimeout(context.Background(), defaultTimeout)
-	defer cancel()
+//func discoveryRaw(){
+//	server := "peer0.org1.example.com:7051"
+//	conf,err := cmdcommon.ConfigFromFile("config/discovery_config.yaml")
+//
+//	client, err := comm.NewClient(conf.TLSConfig)
+//
+//	siger, err := signer.NewSigner(conf.SignerConfig)
+//	timeout, cancel := context.WithTimeout(context.Background(), time.Second*5)
+//	defer cancel()
+//
+//	req := discovery.NewRequest()
+//	req = req.OfChannel("channel2")
+//	req = req.AddPeersQuery()
+//	req.Authentication = &discoverypb.AuthInfo{
+//		ClientIdentity:    siger.Creator,
+//		ClientTlsCertHash: client.TLSCertHash,
+//	}
+//	payload := utils.MarshalOrPanic(req.Request)
+//	sig, err := siger.Sign(payload)
+//
+//	cc, err := client.NewDialer(server)()
+//
+//	timeout, cancel = context.WithTimeout(context.Background(), time.Second*5)
+//
+//	resp,err := discoverypb.NewDiscoveryClient(cc).Discover(timeout,&discoverypb.SignedRequest{Payload: payload,Signature: sig})
+//
+//	fmt.Println(resp)
+//	common.CheckErr(err)
+//}
 
-	req := discovery.NewRequest()
-	req = req.OfChannel("mychannel")
-	req = req.AddPeersQuery()
-	req.Authentication = &discoverypb.AuthInfo{
-		ClientIdentity:    siger.Creator,
-		ClientTlsCertHash: client.TLSCertHash,
-	}
-	payload := utils.MarshalOrPanic(req.Request)
-	sig, err := siger.Sign(payload)
-
-	cc, err := client.NewDialer(server)()
-
-	timeout, cancel = context.WithTimeout(context.Background(), defaultTimeout)
-
-	resp,err := discoverypb.NewDiscoveryClient(cc).Discover(timeout,&discoverypb.SignedRequest{Payload: payload,Signature: sig})
-
-	fmt.Println(resp)
-	common.CheckErr(err)
-}
-
-func listenBlockEvent(ccp ccpcontext.ChannelProvider,channelGenesisHash string){
-	ec,err := event.New(ccp,event.WithBlockEvents())
-
-	if err !=nil {
-		fmt.Errorf("init event client error %s",err)
-	}
-
-	reg, notifier, err :=ec.RegisterBlockEvent()
-
-	if err != nil {
-		fmt.Printf("Failed to register block event: %s", err)
-		return
-	}
-	defer ec.Unregister(reg)
-
-	var bEvent *fab.BlockEvent
-
-	for  {
-		select {
-		case bEvent = <-notifier:
-			b := bEvent.Block
-			constructBlock(b,channelGenesisHash)
-		}
-	}
-}
 

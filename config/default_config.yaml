@@ -1,6 +1,6 @@
 default_org_user: "User1"
 default_org_name: "Org1"
-default_peer_url: "grpcs://192.168.126.128:7051"
+default_peer_url: "grpcs://114.115.204.233:7051"
 default_server_name: "peer0.org1.example.com"
-default_channel_name: "mychannel"
+default_channel_name: "channel2"
 default_org_admin: "Admin"
