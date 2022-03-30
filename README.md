@@ -1,6 +1,7 @@
 hyperledger fabric 区块链浏览器，与官方的区块链浏览器功能大致相同，使用go 和vue开发
 
 演示
+http://114.115.204.233:8082/#/main/dashboard
 ![20210726101944](https://user-images.githubusercontent.com/27334218/127443097-15e4a3d1-7db7-4b71-925c-7c42df9a05dc.png)
 ![20210726102029](https://user-images.githubusercontent.com/27334218/127446089-dd077d31-fa28-4164-9a36-db8d9e1c85da.png)
 ![20210726102058](https://user-images.githubusercontent.com/27334218/127446143-4b8cf6f5-c87c-4a5b-8ecd-d367629d323d.png)
